@@ -4,11 +4,15 @@ import apidemo.util.HtmlButton;
 import apidemo.util.UpperField;
 import apidemo.util.VerticalPanel;
 import com.ib.client.*;
+import com.ib.controller.ApiController;
 
 import javax.swing.*;
 import java.awt.*;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Date;
 
 public class CalendarSpreadStrategyPanel extends JPanel {
     private final UpperField m_spotPrice = new UpperField();
@@ -16,14 +20,39 @@ public class CalendarSpreadStrategyPanel extends JPanel {
     private JCheckBox m_useSellStikesForBuying = new JCheckBox();
     private UpperField m_buyLegLengthFromSellPrice = new UpperField();
 
-    private Contract m_putSellContract;
-    private Contract m_callSellContract;
-    private Contract m_putBuyContract;
-    private Contract m_callBuyContract;
+    private Contract m_putSellContract, m_callSellContract, m_putBuyContract, m_callBuyContract;
+
+    enum ContractType {
+        PUT_SELL, CALL_SELL, PUT_BUY, CALL_BUY;
+    }
+
+    // New member variables for legs
+    private ComboLeg m_sellCallLeg, m_sellPutLeg, m_buyCallLeg, m_buyPutLeg;
+
+
+    transient ApiController.TopMktDataAdapter m_stockListener = new ApiController.TopMktDataAdapter() {
+        @Override public void tickPrice(TickType tickType, double price, TickAttrib attribs) {
+            if (tickType == TickType.LAST || tickType == TickType.DELAYED_LAST || tickType == TickType.CLOSE) { //TODO: Remove close
+                m_spotPrice.setText( "" + customRound(price));
+                CalendarSpreadStrategy.INSTANCE.controller().cancelTopMktData(m_stockListener);
+
+                createAndPopulateContracts(m_spotPrice.getDouble());
+            }
+        }
+    };
+
+    private void createAndPopulateContracts(double spotPrice) {
+        createContracts(spotPrice);
+
+        //
+        populateContractDetails(m_callSellContract, ContractType.CALL_SELL);
+        populateContractDetails(m_putSellContract, ContractType.PUT_SELL);
+        populateContractDetails(m_callBuyContract, ContractType.CALL_BUY);
+        populateContractDetails(m_putBuyContract, ContractType.PUT_BUY);
+    }
 
     public CalendarSpreadStrategyPanel() {
         VerticalPanel p = getInputPanel();
-
         VerticalPanel butPanel = getButtonPanel();
         setLayout(new BorderLayout());
         add(p, BorderLayout.WEST);
@@ -32,23 +61,25 @@ public class CalendarSpreadStrategyPanel extends JPanel {
 
     private VerticalPanel getInputPanel() {
         VerticalPanel p = new VerticalPanel();
-        p.add( "Spot price", m_spotPrice);
-        p.add( "Sell legs length from spot", m_sellLegLengthFromSpotPrice);
-        p.add( "Use Sell strikes for buying", m_useSellStikesForBuying);
-        p.add( "Buy legs length from sell", m_buyLegLengthFromSellPrice);
+        p.add("Spot price", m_spotPrice);
+        p.add("Sell legs length from spot", m_sellLegLengthFromSpotPrice);
+        p.add("Use Sell strikes for buying", m_useSellStikesForBuying);
+        p.add("Buy legs length from sell", m_buyLegLengthFromSellPrice);
         return p;
     }
 
     private VerticalPanel getButtonPanel() {
-        HtmlButton populateContracts = new HtmlButton( "Populate contracts") {
-            @Override protected void actionPerformed() {
-                onPopulateContractDetails();
+        HtmlButton populateContracts = new HtmlButton("Populate contracts") {
+            @Override
+            protected void actionPerformed() {
+                populateContractDetails();
             }
         };
 
-        HtmlButton placeOrder = new HtmlButton( "Place order") {
-            @Override protected void actionPerformed() {
-               onPlaceOrder();
+        HtmlButton placeOrder = new HtmlButton("Place order") {
+            @Override
+            protected void actionPerformed() {
+                onPlaceOrder();
             }
         };
 
@@ -58,108 +89,138 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         return butPanel;
     }
 
-
-    protected void onPopulateContractDetails(Contract contract) {
+    protected void populateContractDetails(Contract contract, final ContractType type) {
         CalendarSpreadStrategy.INSTANCE.controller().reqContractDetails(contract, list -> {
             for (ContractDetails details : list) {
                 System.out.println(details.contract());
+                populateLegs(details.contract(), type);
             }
         });
     }
 
-    protected void onPopulateContractDetails() {
+    protected void populateContractDetails() {
         onOK();
-        onPopulateContractDetails(m_callSellContract);
-        onPopulateContractDetails(m_putSellContract);
-        onPopulateContractDetails(m_callBuyContract);
-        onPopulateContractDetails(m_putBuyContract);
     }
 
     protected void onPlaceOrder() {
-        // Define the Combo Contract for SPY
         Contract comboContract = new Contract();
-        comboContract.symbol("SPY");              // Underlying symbol
-        comboContract.secType("BAG");             // Combo (BAG) contract
-        comboContract.currency("USD");            // Currency
-        comboContract.exchange("SMART");          // Smart routing
+        comboContract.symbol("SPY");
+        comboContract.secType("BAG");
+        comboContract.currency("USD");
+        comboContract.exchange("SMART");
 
-
-
-        // Leg 1: Sell SPY Call Option (near-term expiry)
-        ComboLeg leg1 = new ComboLeg();
-        leg1.conid(123456789);       // Contract ID for near-term option
-        leg1.ratio(1);               // Quantity ratio
-        leg1.action("SELL");         // Sell near-term option
-        leg1.exchange("SMART");
-
-// Leg 2: Buy SPY Call Option (long-term expiry)
-        ComboLeg leg2 = new ComboLeg();
-        leg2.conid(987654321);       // Contract ID for long-term option
-        leg2.ratio(1);               // Quantity ratio
-        leg2.action("BUY");          // Buy long-term option
-        leg2.exchange("SMART");
-
-// Add legs to the combo contract
-        comboContract.comboLegs(new ArrayList<>(Arrays.asList(leg1, leg2)));
-
-
+        // Adding all four legs
+        comboContract.comboLegs(new ArrayList<>(Arrays.asList(m_sellCallLeg, m_sellPutLeg, m_buyCallLeg, m_buyPutLeg)));
 
         Order comboOrder = new Order();
-        comboOrder.orderType("LMT");                 // Limit order
-        comboOrder.lmtPrice(1.50);                   // Limit price for the spread
-        comboOrder.action("BUY");                    // Buy the calendar spread
-        comboOrder.totalQuantity(Decimal.get(1));                 // Quantity of the spread
-        comboOrder.tif("GTC");                       // Good Till Canceled
+        comboOrder.orderType("LMT");
+        comboOrder.lmtPrice(0.50);
+        comboOrder.action("BUY");
+        comboOrder.totalQuantity(Decimal.get(1));
+        comboOrder.tif("GTC");
 
-// Place the combo order
         CalendarSpreadStrategy.INSTANCE.controller().placeOrModifyOrder(comboContract, comboOrder, null);
     }
 
     private void onOK() {
-        m_callSellContract = new Contract();
-        m_callSellContract.symbol("SPY");          // Underlying symbol
-        m_callSellContract.secType("OPT");         // Security type: Option
-        m_callSellContract.exchange("SMART");      // Exchange
-        m_callSellContract.currency("USD");        // Currency
-        m_callSellContract.lastTradeDateOrContractMonth("20250203");  // Expiry date (YYYYMMDD)
-        m_callSellContract.strike(m_spotPrice.getDouble());            // Strike price
-        m_callSellContract.right("P");             // Option type: "C" for Call, "P" for Put
-        m_callSellContract.multiplier("100");
+        if (m_spotPrice.getText().isEmpty()) {
+            fetchCurrentSPYPrice();
+        } else {
 
-
-        m_putSellContract = new Contract();
-        m_putSellContract.symbol("SPY");          // Underlying symbol
-        m_putSellContract.secType("OPT");         // Security type: Option
-        m_putSellContract.exchange("SMART");      // Exchange
-        m_putSellContract.currency("USD");        // Currency
-        m_putSellContract.lastTradeDateOrContractMonth("20250203");  // Expiry date (YYYYMMDD)
-        m_putSellContract.strike(m_spotPrice.getDouble());            // Strike price
-        m_putSellContract.right("P");             // Option type: "C" for Call, "P" for Put
-        m_putSellContract.multiplier("100");
-
-
-        m_callBuyContract = new Contract();
-        m_callBuyContract.symbol("SPY");          // Underlying symbol
-        m_callBuyContract.secType("OPT");         // Security type: Option
-        m_callBuyContract.exchange("SMART");      // Exchange
-        m_callBuyContract.currency("USD");        // Currency
-        m_callBuyContract.lastTradeDateOrContractMonth("20250203");  // Expiry date (YYYYMMDD)
-        m_callBuyContract.strike(m_spotPrice.getDouble());            // Strike price
-        m_callBuyContract.right("P");             // Option type: "C" for Call, "P" for Put
-        m_callBuyContract.multiplier("100");
-
-
-        m_putBuyContract = new Contract();
-        m_putBuyContract.symbol("SPY");          // Underlying symbol
-        m_putBuyContract.secType("OPT");         // Security type: Option
-        m_putBuyContract.exchange("SMART");      // Exchange
-        m_putBuyContract.currency("USD");        // Currency
-        m_putBuyContract.lastTradeDateOrContractMonth("20250203");  // Expiry date (YYYYMMDD)
-        m_putBuyContract.strike(m_spotPrice.getDouble());            // Strike price
-        m_putBuyContract.right("P");             // Option type: "C" for Call, "P" for Put
-        m_putBuyContract.multiplier("100");
-
+        }
     }
 
+    // Fetch the current SPY price if the spot price is not provided
+    private void fetchCurrentSPYPrice() {
+        Contract spyContract = new Contract();
+        spyContract.symbol("SPY");
+        spyContract.secType("STK");
+        spyContract.exchange("SMART");
+        spyContract.currency("USD");
+        CalendarSpreadStrategy.INSTANCE.controller().reqTopMktData(spyContract, "", false, false, m_stockListener);
+    }
 
+    // Populate contracts based on the spot price
+    private void createContracts(double spotPrice) {
+        //Current week
+       // Date
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(2025, Calendar.FEBRUARY, 3);
+        Date today = calendar.getTime();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
+
+        calendar.add(Calendar.DAY_OF_MONTH, 7);
+        String dateAfter7Days = sdf.format(calendar.getTime());
+
+        m_callSellContract = createOptionContract("C", spotPrice + m_sellLegLengthFromSpotPrice.getDouble(), dateAfter7Days);
+        m_putSellContract = createOptionContract("P", spotPrice - m_sellLegLengthFromSpotPrice.getDouble(), dateAfter7Days);
+
+
+        //Next week
+        calendar.setTime(today);
+        calendar.add(Calendar.DAY_OF_MONTH, 10);
+        String dateAfter14Days = sdf.format(calendar.getTime());
+
+
+        m_callBuyContract = createOptionContract("C", spotPrice + m_buyLegLengthFromSellPrice.getDouble(), dateAfter14Days);
+        m_putBuyContract = createOptionContract("P", spotPrice - m_buyLegLengthFromSellPrice.getDouble(), dateAfter14Days);
+    }
+
+    private Contract createOptionContract(String right, double strike, String date) {
+        Contract contract = new Contract();
+        contract.symbol("SPY");
+        contract.secType("OPT");
+        contract.exchange("SMART");
+        contract.currency("USD");
+        contract.lastTradeDateOrContractMonth(date);
+        contract.strike(strike);
+        contract.right(right);
+        contract.multiplier("100");
+        return contract;
+    }
+
+    // Populate the legs when contract details are received
+    private void populateLegs(Contract contract, ContractType type) {
+        // Create a new ComboLeg for the given contract
+        ComboLeg leg = new ComboLeg();
+        leg.conid(contract.conid());  // Set the contract ID
+        leg.ratio(1);                  // Default ratio (1:1)
+        leg.exchange("SMART");         // Set the exchange to SMART (IB's default)
+
+        // Assign legs based on the contract type
+        switch (type) {
+            case CALL_BUY:
+                leg.action("BUY");
+                m_buyCallLeg = leg;  // Assign leg as buy call leg
+                break;
+
+            case CALL_SELL:
+                leg.action("SELL");
+                m_sellCallLeg = leg;  // Assign leg as sell call leg
+                break;
+
+            case PUT_BUY:
+                leg.action("BUY");
+                m_buyPutLeg = leg;    // Assign leg as buy put leg
+                break;
+
+            case PUT_SELL:
+                leg.action("SELL");
+                m_sellPutLeg = leg;   // Assign leg as sell put leg
+                break;
+
+            default:
+                throw new IllegalArgumentException("Invalid contract type: " + type);
+        }
+    }
+
+    public static double customRound(double value) {
+        double fractionalPart = value - Math.floor(value);
+
+        if (fractionalPart > 0.5) {
+            return Math.ceil(value);  // Round up
+        } else {
+            return Math.floor(value); // Round down
+        }
+    }
 }
