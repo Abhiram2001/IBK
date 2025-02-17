@@ -1,13 +1,18 @@
 package org.example;
 
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.util.Calendar;
 import java.util.Date;
 
 public class Main {
     public static void main(String[] args) {
+        // Get today's date dynamically
+        LocalDate todayDate = LocalDate.now();
+
+        // Create Calendar instance and set it to today's date
         Calendar calendar = Calendar.getInstance();
-        calendar.set(2025, Calendar.FEBRUARY, 3);
+        calendar.set(todayDate.getYear(), todayDate.getMonthValue() - 1, todayDate.getDayOfMonth());
         Date today = calendar.getTime();
 
         // Define the date format
@@ -24,7 +29,7 @@ public class Main {
 
         // Reset calendar to today's date and add 14 days
         calendar.setTime(today);
-        calendar.add(Calendar.DAY_OF_MONTH, 10);
+        calendar.add(Calendar.DAY_OF_MONTH, 14);
         String dateAfter14Days = sdf.format(calendar.getTime());
         System.out.println("Date after 14 days: " + dateAfter14Days);
     }

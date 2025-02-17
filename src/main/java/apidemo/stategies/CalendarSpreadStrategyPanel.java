@@ -9,12 +9,15 @@ import com.ib.controller.ApiController;
 import javax.swing.*;
 import java.awt.*;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 
 public class CalendarSpreadStrategyPanel extends JPanel {
+    private UpperField m_currentExpiryDate = new UpperField();
+    private UpperField m_nextExpiryDate = new UpperField();
     private final UpperField m_spotPrice = new UpperField();
     private UpperField m_sellLegLengthFromSpotPrice = new UpperField();
     private JCheckBox m_useSellStikesForBuying = new JCheckBox();
@@ -61,6 +64,8 @@ public class CalendarSpreadStrategyPanel extends JPanel {
 
     private VerticalPanel getInputPanel() {
         VerticalPanel p = new VerticalPanel();
+        p.add("Current expiry", m_currentExpiryDate);
+        p.add("Next expiry", m_nextExpiryDate);
         p.add("Spot price", m_spotPrice);
         p.add("Sell legs length from spot", m_sellLegLengthFromSpotPrice);
         p.add("Use Sell strikes for buying", m_useSellStikesForBuying);
@@ -69,6 +74,14 @@ public class CalendarSpreadStrategyPanel extends JPanel {
     }
 
     private VerticalPanel getButtonPanel() {
+
+        HtmlButton populateDates = new HtmlButton("Populate dates") {
+            @Override
+            protected void actionPerformed() {
+                populateDates();
+            }
+        };
+
         HtmlButton populateContracts = new HtmlButton("Populate contracts") {
             @Override
             protected void actionPerformed() {
@@ -84,9 +97,32 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         };
 
         VerticalPanel butPanel = new VerticalPanel();
+        butPanel.add(populateDates);
         butPanel.add(populateContracts);
         butPanel.add(placeOrder);
         return butPanel;
+    }
+
+    private void populateDates() {
+        LocalDate todayDate = LocalDate.now();
+        // Create Calendar instance and set it to today's date
+        Calendar calendar = Calendar.getInstance();
+        calendar.set(todayDate.getYear(), todayDate.getMonthValue() - 1, todayDate.getDayOfMonth());
+        Date today = calendar.getTime();
+
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
+
+        // After 7 days
+        calendar.add(Calendar.DAY_OF_MONTH, 7);
+        String dateAfter7Days = sdf.format(calendar.getTime());
+
+        //Next week
+        calendar.setTime(today);
+        calendar.add(Calendar.DAY_OF_MONTH, 14);
+        String dateAfter14Days = sdf.format(calendar.getTime());
+
+        m_currentExpiryDate.setText(dateAfter7Days);
+        m_nextExpiryDate.setText(dateAfter14Days);
     }
 
     protected void populateContractDetails(Contract contract, final ContractType type) {
@@ -142,25 +178,11 @@ public class CalendarSpreadStrategyPanel extends JPanel {
 
     // Populate contracts based on the spot price
     private void createContracts(double spotPrice) {
-        //Current week
-       // Date
-        Calendar calendar = Calendar.getInstance();
-        calendar.set(2025, Calendar.FEBRUARY, 3);
-        Date today = calendar.getTime();
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
-
-        calendar.add(Calendar.DAY_OF_MONTH, 7);
-        String dateAfter7Days = sdf.format(calendar.getTime());
+        String dateAfter7Days = m_currentExpiryDate.getText();
+        String dateAfter14Days = m_nextExpiryDate.getText();
 
         m_callSellContract = createOptionContract("C", spotPrice + m_sellLegLengthFromSpotPrice.getDouble(), dateAfter7Days);
         m_putSellContract = createOptionContract("P", spotPrice - m_sellLegLengthFromSpotPrice.getDouble(), dateAfter7Days);
-
-
-        //Next week
-        calendar.setTime(today);
-        calendar.add(Calendar.DAY_OF_MONTH, 10);
-        String dateAfter14Days = sdf.format(calendar.getTime());
-
 
         m_callBuyContract = createOptionContract("C", spotPrice + m_buyLegLengthFromSellPrice.getDouble(), dateAfter14Days);
         m_putBuyContract = createOptionContract("P", spotPrice - m_buyLegLengthFromSellPrice.getDouble(), dateAfter14Days);
