@@ -24,6 +24,7 @@ public class CalendarSpreadStrategyPanel extends JPanel {
     private UpperField m_sellLegLengthFromSpotPrice = new UpperField();
     private JCheckBox m_useSellStikesForBuying = new JCheckBox();
     private UpperField m_buyLegLengthFromSellPrice = new UpperField();
+    private final JLabel m_status = new JLabel();
     HtmlButton placeOrder;
     private int contractsFetched = 0;
     private static final int TOTAL_CONTRACTS = 4;
@@ -61,7 +62,15 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         VerticalPanel butPanel = getButtonPanel();
         setLayout(new BorderLayout());
         add(p, BorderLayout.WEST);
-        add(butPanel);
+
+        // Create a right panel with BoxLayout (Y_AXIS for vertical stacking)
+        JPanel rightPanel = new JPanel();
+        rightPanel.setLayout(new BoxLayout(rightPanel, BoxLayout.Y_AXIS));
+
+        rightPanel.add(butPanel);   // Buttons at the top
+        rightPanel.add(m_status);
+
+        add(rightPanel);
         m_useSellStikesForBuying.addActionListener(new Action() {
             @Override
             public Object getValue(String key) {
@@ -118,6 +127,7 @@ public class CalendarSpreadStrategyPanel extends JPanel {
             @Override
             protected void actionPerformed() {
                 fetchCurrentSPYPrice();
+                placeOrder.setVisible(false);
             }
         };
 
@@ -126,6 +136,7 @@ public class CalendarSpreadStrategyPanel extends JPanel {
             protected void actionPerformed() {
                 createAndPopulateContracts();
                 placeOrder.setVisible(true);
+                m_status.setText("Contracts ready to execute.");
             }
         };
 
@@ -188,6 +199,7 @@ public class CalendarSpreadStrategyPanel extends JPanel {
             contractsFetched++;
             if (contractsFetched == TOTAL_CONTRACTS) {
                 placeOrder.setVisible(true);
+                m_status.setText("Contracts ready to execute.");
             }
         });
     }
@@ -209,7 +221,22 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         comboOrder.totalQuantity(Decimal.get(1));
         comboOrder.tif("GTC");
 
-        CalendarSpreadStrategy.INSTANCE.controller().placeOrModifyOrder(comboContract, comboOrder, null);
+        CalendarSpreadStrategy.INSTANCE.controller().placeOrModifyOrder(comboContract, comboOrder, new ApiController.IOrderHandler() {
+            @Override
+            public void orderState(OrderState orderState, Order order) {
+                m_status.setText("Order status: " + orderState.getStatus());
+                placeOrder.setVisible(false);
+            }
+
+            @Override
+            public void orderStatus(OrderStatus status, Decimal filled, Decimal remaining, double avgFillPrice, int permId, int parentId, double lastFillPrice, int clientId, String whyHeld, double mktCapPrice) {
+
+            }
+
+            @Override
+            public void handle(int errorCode, String errorMsg) {
+            }
+        });
     }
 
     // Fetch the current SPY price if the spot price is not provided
