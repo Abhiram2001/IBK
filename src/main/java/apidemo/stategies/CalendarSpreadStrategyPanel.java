@@ -26,7 +26,7 @@ public class CalendarSpreadStrategyPanel extends JPanel {
     private UpperField m_buyLegLengthFromSellPrice = new UpperField();
     private final JLabel m_status = new JLabel();
     HtmlButton placeOrder;
-    private int contractsFetched = 0;
+    private int numberOfContractsLoaded = 0;
     private static final int TOTAL_CONTRACTS = 4;
 
     private Contract m_putSellContract, m_callSellContract, m_putBuyContract, m_callBuyContract;
@@ -51,6 +51,7 @@ public class CalendarSpreadStrategyPanel extends JPanel {
 
     private void createAndPopulateContracts() {
         createContracts();
+        numberOfContractsLoaded = 0; //Reset loaded contracts to 0 everytime we click on
         populateContractDetails(m_callSellContract, ContractType.CALL_SELL);
         populateContractDetails(m_putSellContract, ContractType.PUT_SELL);
         populateContractDetails(m_callBuyContract, ContractType.CALL_BUY);
@@ -102,10 +103,10 @@ public class CalendarSpreadStrategyPanel extends JPanel {
 
             @Override
             public void actionPerformed(ActionEvent e) {
-                if (m_useSellStikesForBuying.isSelected())
-                    m_buyLegLengthFromSellPrice.setVisible(false);
-                else
-                    m_buyLegLengthFromSellPrice.setVisible(true);
+                SwingUtilities.invokeLater(() -> {
+                    m_buyLegLengthFromSellPrice.setVisible(!m_useSellStikesForBuying.isSelected());
+                });
+
             }
         });
     }
@@ -126,23 +127,26 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         HtmlButton populateDefaults = new HtmlButton("Populate defaults") {
             @Override
             protected void actionPerformed() {
-                fetchCurrentSPYPrice();
                 placeOrder.setVisible(false);
+                m_status.setText("Loading default values... Please wait.");
+                fetchCurrentSPYPrice();
+
             }
         };
 
         HtmlButton populateContracts = new HtmlButton("Populate contracts") {
             @Override
             protected void actionPerformed() {
+                m_status.setText("Fetching contract details...");
                 createAndPopulateContracts();
-                placeOrder.setVisible(true);
-                m_status.setText("Contracts ready to execute.");
+
             }
         };
 
         placeOrder = new HtmlButton("Place order") {
             @Override
             protected void actionPerformed() {
+                m_status.setText("Submitting order... Please wait.");
                 onPlaceOrder();
             }
         };
@@ -156,11 +160,15 @@ public class CalendarSpreadStrategyPanel extends JPanel {
     }
 
     private void populateDefaults(double spotPrice) {
-        m_spotPrice.setText( "" + customRound(spotPrice));
-        populateDates();
-        m_sellLegLengthFromSpotPrice.setText(5);
-        m_useSellStikesForBuying.setSelected(false);
-        m_buyLegLengthFromSellPrice.setText(3);
+        SwingUtilities.invokeLater(() -> {
+            m_spotPrice.setText("" + customRound(spotPrice));
+            populateDates();
+            m_sellLegLengthFromSpotPrice.setText(5);
+            m_useSellStikesForBuying.setSelected(false);
+            m_buyLegLengthFromSellPrice.setVisible(true);
+            m_buyLegLengthFromSellPrice.setText(3);
+            m_status.setText("Default values loaded successfully.");
+        });
     }
 
     private void populateDates() {
@@ -189,17 +197,24 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         CalendarSpreadStrategy.INSTANCE.controller().reqContractDetails(contract, list -> {
             if (list.size() > 1) {
                 CalendarSpreadStrategy.INSTANCE.show("ERROR: More than one contract details found for given contract.");
+                m_status.setText("ERROR: More than one contract details found for given contract.");
                 return;
             }
+
+            if (list.isEmpty()) {
+                m_status.setText("ERROR: Contract details not found. Please check expiry date.");
+                return;
+            }
+
 
             for (ContractDetails details : list) {
                 populateLegs(details.contract(), type);
             }
 
-            contractsFetched++;
-            if (contractsFetched == TOTAL_CONTRACTS) {
+            numberOfContractsLoaded++;
+            if (numberOfContractsLoaded == TOTAL_CONTRACTS) {
                 placeOrder.setVisible(true);
-                m_status.setText("Contracts ready to execute.");
+                m_status.setText("Contracts retrieved successfully. Proceed with order.");
             }
         });
     }
@@ -255,11 +270,11 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         String dateAfter7Days = m_currentExpiryDate.getText();
         String dateAfter14Days = m_nextExpiryDate.getText();
 
-        double sellDelta = subZero(m_sellLegLengthFromSpotPrice.getDouble(), 5);
+        double sellDelta = getPositiveOrZero(m_sellLegLengthFromSpotPrice.getDouble());
         m_callSellContract = createOptionContract("C", spotPrice + sellDelta, dateAfter7Days);
         m_putSellContract = createOptionContract("P", spotPrice - sellDelta, dateAfter7Days);
 
-        double callDelta = m_useSellStikesForBuying.isSelected() ? sellDelta : sellDelta + subZero(m_buyLegLengthFromSellPrice.getDouble(), 3);
+        double callDelta = m_useSellStikesForBuying.isSelected() ? sellDelta : sellDelta + getPositiveOrZero(m_buyLegLengthFromSellPrice.getDouble());
         m_callBuyContract = createOptionContract("C", spotPrice + callDelta, dateAfter14Days);
         m_putBuyContract = createOptionContract("P", spotPrice - callDelta, dateAfter14Days);
     }
@@ -323,7 +338,7 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         }
     }
 
-    public static double subZero(double value, double elseValue) {
-        return value > 0 ? value : elseValue;
+    public static double getPositiveOrZero(double value) {
+        return Math.max(value, 0);
     }
 }
