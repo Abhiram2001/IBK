@@ -15,6 +15,12 @@ jobs:
           java-version: '8'
 
 
+      - name: Create my_runtime directory
+        run: |
+          mkdir my_runtime
+          xcopy "$JAVA_HOME" "my_runtime" /E /I /Y
+        shell: cmd
+
       - name: Install Launch4j
         run: choco install launch4j -y
 
