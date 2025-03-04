@@ -33,10 +33,9 @@ jobs:
             Write-Host "❌ Launch4j installation not found!"
             exit 1
           }
-
       - name: Convert JAR to EXE
         run: |
-          "C:\Program Files (x86)\Launch4j\launch4jc.exe" config/launch4j-config.xml
+          & C:\Program` Files` `(x86`)\Launch4j\launch4jc.exe config/launch4j-config.xml
 
       - name: Upload EXE as an artifact
         uses: actions/upload-artifact@v4
