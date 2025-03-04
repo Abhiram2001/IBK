@@ -19,7 +19,7 @@ import java.util.Date;
 
 public class StrangleStrategyPanel extends JPanel {
     private final TradingStrategies m_parent;
-    private JDateChooser m_expiryDate;
+    private final JDateChooser m_expiryDate;
     private final UpperField m_spotPrice = new UpperField();
     private final UpperField m_callStrikeDistance = new UpperField();
     private final UpperField m_putStrikeDistance = new UpperField();
@@ -49,7 +49,7 @@ public class StrangleStrategyPanel extends JPanel {
         JPanel mainPanel = new JPanel();
         mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
 
-        JLabel titleLabel = new JLabel("Strangle Strategy");
+        JLabel titleLabel = new JLabel("Strangle Strategy: In progress");
         titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         mainPanel.add(titleLabel);
         mainPanel.add(Box.createVerticalStrut(20));

@@ -32,27 +32,55 @@ public class MultiStockStrategyPanel extends JPanel {
         JPanel mainPanel = new JPanel();
         mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
 
-        JLabel titleLabel = new JLabel("Multi Stock Strategy");
+        JLabel titleLabel = new JLabel("Multi Stock Strategy: In progress");
         titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         mainPanel.add(titleLabel);
         mainPanel.add(Box.createVerticalStrut(20));
+
+        // Create a panel for stock entries using GridBagLayout
+        JPanel stockEntriesPanel = new JPanel(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        // Add column headers
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        stockEntriesPanel.add(new JLabel("Stock"), gbc);
+        gbc.gridx = 1;
+        gbc.gridy = 0;
+        stockEntriesPanel.add(new JLabel("Quantity"), gbc);
+        gbc.gridx = 2;
+        gbc.gridy = 0;
+        stockEntriesPanel.add(new JLabel("Price"), gbc);
+        gbc.gridx = 3;
+        gbc.gridy = 0;
+        stockEntriesPanel.add(new JLabel("Action"), gbc);
 
         // Create stock entry fields
         for (int i = 0; i < MAX_STOCKS; i++) {
             StockEntry entry = new StockEntry();
             m_stockEntries.add(entry);
 
-            JPanel stockPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-            stockPanel.add(new JLabel("Stock " + (i + 1) + ":"));
-            stockPanel.add(entry.symbol);
-            stockPanel.add(new JLabel("Quantity:"));
-            stockPanel.add(entry.quantity);
-            stockPanel.add(new JLabel("Price:"));
-            stockPanel.add(entry.price);
-            stockPanel.add(entry.isSell);
+            gbc.gridy = i + 1;
 
-            mainPanel.add(stockPanel);
+            gbc.gridx = 0;
+            stockEntriesPanel.add(new JLabel("Stock " + (i + 1) + ":"), gbc);
+
+            gbc.gridx = 1;
+            stockEntriesPanel.add(entry.symbol, gbc);
+
+            gbc.gridx = 2;
+            stockEntriesPanel.add(entry.quantity, gbc);
+
+            gbc.gridx = 3;
+            stockEntriesPanel.add(entry.price, gbc);
+
+            gbc.gridx = 4;
+            stockEntriesPanel.add(entry.isSell, gbc);
         }
+
+        mainPanel.add(stockEntriesPanel);
 
         // Add buttons
         VerticalPanel buttonPanel = new VerticalPanel();
