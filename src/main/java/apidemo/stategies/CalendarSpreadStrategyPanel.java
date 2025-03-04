@@ -18,6 +18,7 @@ import java.util.Calendar;
 import java.util.Date;
 
 public class CalendarSpreadStrategyPanel extends JPanel {
+    private final TradingStrategies m_parent;
     private UpperField m_currentExpiryDate = new UpperField();
     private UpperField m_nextExpiryDate = new UpperField();
     private final UpperField m_spotPrice = new UpperField();
@@ -38,40 +39,44 @@ public class CalendarSpreadStrategyPanel extends JPanel {
     // New member variables for legs
     private ComboLeg m_sellCallLeg, m_sellPutLeg, m_buyCallLeg, m_buyPutLeg;
 
-
     transient ApiController.TopMktDataAdapter m_stockListener = new ApiController.TopMktDataAdapter() {
-        @Override public void tickPrice(TickType tickType, double price, TickAttrib attribs) {
-            if (tickType == TickType.LAST || tickType == TickType.DELAYED_LAST || tickType == TickType.CLOSE) { //TODO: Remove close
+        @Override
+        public void tickPrice(TickType tickType, double price, TickAttrib attribs) {
+            if (tickType == TickType.LAST || tickType == TickType.DELAYED_LAST || tickType == TickType.CLOSE) {
                 populateDefaults(customRound(price));
-
-                CalendarSpreadStrategy.INSTANCE.controller().cancelTopMktData(m_stockListener);
+                m_parent.controller().cancelTopMktData(m_stockListener);
             }
         }
     };
 
     private void createAndPopulateContracts() {
         createContracts();
-        numberOfContractsLoaded = 0; //Reset loaded contracts to 0 everytime we click on
+        numberOfContractsLoaded = 0;
         populateContractDetails(m_callSellContract, ContractType.CALL_SELL);
         populateContractDetails(m_putSellContract, ContractType.PUT_SELL);
         populateContractDetails(m_callBuyContract, ContractType.CALL_BUY);
         populateContractDetails(m_putBuyContract, ContractType.PUT_BUY);
     }
 
-    public CalendarSpreadStrategyPanel() {
+    public CalendarSpreadStrategyPanel(TradingStrategies parent) {
+        m_parent = parent;
+        setLayout(new BorderLayout());
+
+        JPanel mainPanel = new JPanel();
+        mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
+
+        JLabel titleLabel = new JLabel("Calendar Spread Strategy");
+        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        mainPanel.add(titleLabel);
+        mainPanel.add(Box.createVerticalStrut(20));
+
         VerticalPanel p = getInputPanel();
         VerticalPanel butPanel = getButtonPanel();
-        setLayout(new BorderLayout());
-        add(p, BorderLayout.WEST);
+        mainPanel.add(p);
+        mainPanel.add(butPanel);
+        mainPanel.add(m_status);
 
-        // Create a right panel with BoxLayout (Y_AXIS for vertical stacking)
-        JPanel rightPanel = new JPanel();
-        rightPanel.setLayout(new BoxLayout(rightPanel, BoxLayout.Y_AXIS));
-
-        rightPanel.add(butPanel);   // Buttons at the top
-        rightPanel.add(m_status);
-
-        add(rightPanel);
+        add(mainPanel, BorderLayout.CENTER);
         m_useSellStikesForBuying.addActionListener(new Action() {
             @Override
             public Object getValue(String key) {
@@ -93,12 +98,10 @@ public class CalendarSpreadStrategyPanel extends JPanel {
 
             @Override
             public void addPropertyChangeListener(PropertyChangeListener listener) {
-
             }
 
             @Override
             public void removePropertyChangeListener(PropertyChangeListener listener) {
-
             }
 
             @Override
@@ -106,7 +109,6 @@ public class CalendarSpreadStrategyPanel extends JPanel {
                 SwingUtilities.invokeLater(() -> {
                     m_buyLegLengthFromSellPrice.setVisible(!m_useSellStikesForBuying.isSelected());
                 });
-
             }
         });
     }
@@ -123,14 +125,12 @@ public class CalendarSpreadStrategyPanel extends JPanel {
     }
 
     private VerticalPanel getButtonPanel() {
-
         HtmlButton populateDefaults = new HtmlButton("Populate defaults") {
             @Override
             protected void actionPerformed() {
                 placeOrder.setVisible(false);
                 m_status.setText("Loading default values... Please wait.");
                 fetchCurrentSPYPrice();
-
             }
         };
 
@@ -139,7 +139,6 @@ public class CalendarSpreadStrategyPanel extends JPanel {
             protected void actionPerformed() {
                 m_status.setText("Fetching contract details...");
                 createAndPopulateContracts();
-
             }
         };
 
@@ -172,7 +171,6 @@ public class CalendarSpreadStrategyPanel extends JPanel {
     }
 
     private void populateDates() {
-        //Populate Dates
         LocalDate todayDate = LocalDate.now();
         Calendar calendar = Calendar.getInstance();
         calendar.set(todayDate.getYear(), todayDate.getMonthValue() - 1, todayDate.getDayOfMonth());
@@ -180,11 +178,9 @@ public class CalendarSpreadStrategyPanel extends JPanel {
 
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
 
-        // After 7 days
         calendar.add(Calendar.DAY_OF_MONTH, 7);
         String dateAfter7Days = sdf.format(calendar.getTime());
 
-        //Next week
         calendar.setTime(today);
         calendar.add(Calendar.DAY_OF_MONTH, 14);
         String dateAfter14Days = sdf.format(calendar.getTime());
@@ -194,9 +190,9 @@ public class CalendarSpreadStrategyPanel extends JPanel {
     }
 
     protected void populateContractDetails(Contract contract, final ContractType type) {
-        CalendarSpreadStrategy.INSTANCE.controller().reqContractDetails(contract, list -> {
+        m_parent.controller().reqContractDetails(contract, list -> {
             if (list.size() > 1) {
-                CalendarSpreadStrategy.INSTANCE.show("ERROR: More than one contract details found for given contract.");
+                m_parent.show("ERROR: More than one contract details found for given contract.");
                 m_status.setText("ERROR: More than one contract details found for given contract.");
                 return;
             }
@@ -205,7 +201,6 @@ public class CalendarSpreadStrategyPanel extends JPanel {
                 m_status.setText("ERROR: Contract details not found. Please check expiry date.");
                 return;
             }
-
 
             for (ContractDetails details : list) {
                 populateLegs(details.contract(), type);
@@ -226,7 +221,6 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         comboContract.currency("USD");
         comboContract.exchange("SMART");
 
-        // Adding all four legs
         comboContract.comboLegs(new ArrayList<>(Arrays.asList(m_sellCallLeg, m_sellPutLeg, m_buyCallLeg, m_buyPutLeg)));
 
         Order comboOrder = new Order();
@@ -236,35 +230,35 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         comboOrder.totalQuantity(Decimal.get(1));
         comboOrder.tif("GTC");
 
-        CalendarSpreadStrategy.INSTANCE.controller().placeOrModifyOrder(comboContract, comboOrder, new ApiController.IOrderHandler() {
-            @Override
-            public void orderState(OrderState orderState, Order order) {
-                m_status.setText("Order status: " + orderState.getStatus());
-                placeOrder.setVisible(false);
-            }
+        m_parent.controller().placeOrModifyOrder(comboContract, comboOrder,
+                new ApiController.IOrderHandler() {
+                    @Override
+                    public void orderState(OrderState orderState, Order order) {
+                        m_status.setText("Order status: " + orderState.getStatus());
+                        placeOrder.setVisible(false);
+                    }
 
-            @Override
-            public void orderStatus(OrderStatus status, Decimal filled, Decimal remaining, double avgFillPrice, int permId, int parentId, double lastFillPrice, int clientId, String whyHeld, double mktCapPrice) {
+                    @Override
+                    public void orderStatus(OrderStatus status, Decimal filled, Decimal remaining,
+                            double avgFillPrice, int permId, int parentId, double lastFillPrice,
+                            int clientId, String whyHeld, double mktCapPrice) {
+                    }
 
-            }
-
-            @Override
-            public void handle(int errorCode, String errorMsg) {
-            }
-        });
+                    @Override
+                    public void handle(int errorCode, String errorMsg) {
+                    }
+                });
     }
 
-    // Fetch the current SPY price if the spot price is not provided
     private void fetchCurrentSPYPrice() {
         Contract spyContract = new Contract();
         spyContract.symbol("SPY");
         spyContract.secType("STK");
         spyContract.exchange("SMART");
         spyContract.currency("USD");
-        CalendarSpreadStrategy.INSTANCE.controller().reqTopMktData(spyContract, "", false, false, m_stockListener);
+        m_parent.controller().reqTopMktData(spyContract, "", false, false, m_stockListener);
     }
 
-    // Populate contracts based on the spot price
     private void createContracts() {
         double spotPrice = m_spotPrice.getDouble();
         String dateAfter7Days = m_currentExpiryDate.getText();
@@ -274,11 +268,11 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         m_callSellContract = createOptionContract("C", spotPrice + sellDelta, dateAfter7Days);
         m_putSellContract = createOptionContract("P", spotPrice - sellDelta, dateAfter7Days);
 
-        double callDelta = m_useSellStikesForBuying.isSelected() ? sellDelta : sellDelta + getPositiveOrZero(m_buyLegLengthFromSellPrice.getDouble());
+        double callDelta = m_useSellStikesForBuying.isSelected() ? sellDelta
+                : sellDelta + getPositiveOrZero(m_buyLegLengthFromSellPrice.getDouble());
         m_callBuyContract = createOptionContract("C", spotPrice + callDelta, dateAfter14Days);
         m_putBuyContract = createOptionContract("P", spotPrice - callDelta, dateAfter14Days);
     }
-
 
     private Contract createOptionContract(String right, double strike, String date) {
         Contract contract = new Contract();
@@ -293,34 +287,31 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         return contract;
     }
 
-    // Populate the legs when contract details are received
     private void populateLegs(Contract contract, ContractType type) {
-        // Create a new ComboLeg for the given contract
         ComboLeg leg = new ComboLeg();
-        leg.conid(contract.conid());  // Set the contract ID
-        leg.ratio(1);                  // Default ratio (1:1)
-        leg.exchange("SMART");         // Set the exchange to SMART (IB's default)
+        leg.conid(contract.conid());
+        leg.ratio(1);
+        leg.exchange("SMART");
 
-        // Assign legs based on the contract type
         switch (type) {
             case CALL_BUY:
                 leg.action("BUY");
-                m_buyCallLeg = leg;  // Assign leg as buy call leg
+                m_buyCallLeg = leg;
                 break;
 
             case CALL_SELL:
                 leg.action("SELL");
-                m_sellCallLeg = leg;  // Assign leg as sell call leg
+                m_sellCallLeg = leg;
                 break;
 
             case PUT_BUY:
                 leg.action("BUY");
-                m_buyPutLeg = leg;    // Assign leg as buy put leg
+                m_buyPutLeg = leg;
                 break;
 
             case PUT_SELL:
                 leg.action("SELL");
-                m_sellPutLeg = leg;   // Assign leg as sell put leg
+                m_sellPutLeg = leg;
                 break;
 
             default:
@@ -330,11 +321,10 @@ public class CalendarSpreadStrategyPanel extends JPanel {
 
     public static double customRound(double value) {
         double fractionalPart = value - Math.floor(value);
-
         if (fractionalPart > 0.5) {
-            return Math.ceil(value);  // Round up
+            return Math.ceil(value);
         } else {
-            return Math.floor(value); // Round down
+            return Math.floor(value);
         }
     }
 
