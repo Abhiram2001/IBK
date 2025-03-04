@@ -22,16 +22,15 @@ jobs:
       - name: Build JAR using Maven
         run: mvn clean package
 
-      - name: Install Launch4j
-        run: |
-          choco install launch4j
+      - name: Install Launch4j in a known location
+        run: choco install launch4j --force -y --install-directory "C:\Launch4j"
 
-      - name: Find Launch4j Path
-        run: where.exe launch4j
+      - name: Verify Launch4j Installation
+        run: Get-ChildItem -Path "C:\Launch4j" -Recurse -Filter "launch4j.exe"
 
       - name: Convert JAR to EXE
         run: |
-          launch4j -v launch4j-config.xml
+          "C:\Launch4j\launch4j.exe" -v launch4j-config.xml
 
       - name: Upload EXE as an artifact
         uses: actions/upload-artifact@v4
