@@ -26,12 +26,15 @@ jobs:
         run: |
           choco install launch4j
 
+      - name: Find Launch4j Path
+        run: where.exe launch4j
+
       - name: Convert JAR to EXE
         run: |
-          launch4j -v path/to/launch4j-config.xml
+          launch4j -v launch4j-config.xml
 
       - name: Upload EXE as an artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-exe
-          path: path/to/output.exe
+          path: target/TBI.exe

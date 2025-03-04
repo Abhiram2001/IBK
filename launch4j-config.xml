@@ -1,0 +1,10 @@
+<launch4jConfig>
+    <dontWrapJar>false</dontWrapJar>
+    <headerType>gui</headerType>
+    <jar>target/TBI-1.0-SNAPSHOT.jar</jar>
+    <outfile>target/TBI.exe</outfile>
+    <icon>src/main/resources/TBI.icns</icon>
+    <jre>
+        <minVersion>21</minVersion>
+    </jre>
+</launch4jConfig>
