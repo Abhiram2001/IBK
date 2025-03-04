@@ -33,9 +33,9 @@ jobs:
             exit 1
           }
 
-      - name: Check Java Installation Path
-        run: where java
-        shell: pwsh
+#      - name: Check Java Installation Path
+#        run: where java
+#        shell: pwsh
 
       - name: Convert JAR to EXE
         run: |
