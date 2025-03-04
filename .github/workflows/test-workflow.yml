@@ -1,0 +1,15 @@
+name: Test Launch4j Installation
+
+on:
+  workflow_dispatch: # Manually trigger the workflow
+
+jobs:
+  test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Install Launch4j
+        run: choco install launch4j -y
+
+      - name: Find Launch4j Installation Directory
+        run: Get-ChildItem -Path "C:\" -Recurse -Filter "launch4j.exe" -ErrorAction SilentlyContinue
