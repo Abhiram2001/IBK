@@ -15,7 +15,6 @@
     <manifest></manifest>
     <icon>src/main/resources/TBI.ico</icon>
     <jre>
-        <path>my_runtime</path>
         <requiresJdk>false</requiresJdk>
         <requires64Bit>false</requires64Bit>
         <minVersion></minVersion>
