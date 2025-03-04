@@ -33,9 +33,24 @@ jobs:
             Write-Host "❌ Launch4j installation not found!"
             exit 1
           }
+
+      - name: Debug - List Target Directory Contents
+        run: |
+          ls target
+
       - name: Convert JAR to EXE
         run: |
-          & C:\Program` Files` `(x86`)\Launch4j\launch4j.exe config/launch4j-config.xml
+          & "C:\Program Files (x86)\Launch4j\launch4j.exe" config/launch4j-config.xml
+
+      - name: Debug - Verify EXE Generation
+        run: |
+          if (Test-Path "target/TBI.exe") {
+            Write-Host "✅ EXE file created successfully"
+            ls target
+          } else {
+            Write-Host "❌ EXE file not found!"
+            exit 1
+          }
 
       - name: Upload EXE as an artifact
         uses: actions/upload-artifact@v4
