@@ -18,7 +18,7 @@
         <path>my_runtime</path>
         <requiresJdk>false</requiresJdk>
         <requires64Bit>false</requires64Bit>
-        <minVersion>21</minVersion>
+        <minVersion></minVersion>
         <maxVersion></maxVersion>
     </jre>
 </launch4jConfig>
