@@ -35,4 +35,6 @@ jobs:
 
       - name: Convert JAR to EXE
         run: |
-              & C:\Program` Files` `(x86`)\Launch4j\launch4jc.exe config/launch4j-config.xml
+          $env:JAVA_HOME="C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.6-7.0\x64"
+          $env:Path="$env:JAVA_HOME\bin;$env:Path"
+          & C:\Program` Files` `(x86`)\Launch4j\launch4jc.exe config/launch4j-config.xml
