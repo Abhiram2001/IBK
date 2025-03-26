@@ -33,6 +33,9 @@ public class CalendarSpreadStrategyPanel extends JPanel {
     private final UpperField m_quantity = new UpperField();
     private final JCheckBox m_useCallSellStrikeForBuying = new JCheckBox();
     private final JCheckBox m_usePutSellStrikeForBuying = new JCheckBox();
+    private final JCheckBox m_both = new JCheckBox();
+    private final JCheckBox m_call = new JCheckBox();
+    private final JCheckBox m_put = new JCheckBox();
     private final JLabel m_status = new JLabel();
     HtmlButton placeOrder;
     private int numberOfContractsLoaded = 0;
@@ -198,15 +201,41 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         p.add("Next expiry", m_nextExpiryDate);
         p.add("Spot price", m_spotPrice);
 
-        p.add("Call Sell length from spot", m_callSellLengthFromSpot);
-        p.add("Use Call Sell strike for buying", m_useCallSellStrikeForBuying);
-        p.add("Call Buy length from sell", m_callBuyLengthFromSell);
-
-        p.add("Put Sell length from spot", m_putSellLengthFromSpot);
-        p.add("Use Put Sell strike for buying", m_usePutSellStrikeForBuying);
-        p.add("Put Buy length from sell", m_putBuyLengthFromSell);
-
         p.add("Quantity", m_quantity);
+
+        JPanel hp = new JPanel();
+        hp.setLayout(new BoxLayout(hp, BoxLayout.X_AXIS));
+
+        hp.add(new JLabel("Use both ")); // Label before buttons
+        hp.add(Box.createRigidArea(new Dimension(10, 0))); // Spacing
+
+        hp.add(m_both);
+        hp.add(Box.createRigidArea(new Dimension(10, 0))); // Spacing
+
+        hp.add(new JLabel("Call: "));
+        hp.add(m_call);
+        hp.add(Box.createRigidArea(new Dimension(10, 0))); // Spacing
+
+        hp.add(new JLabel("Put: "));
+        hp.add(m_put);
+
+        p.add(hp);
+
+        JPanel hp2 = new JPanel();
+        hp2.setLayout(new BoxLayout(hp2, BoxLayout.X_AXIS));
+
+        VerticalPanel callPanel = new VerticalPanel();
+        callPanel.add("Call Sell length from spot", m_callSellLengthFromSpot);
+        callPanel.add("Use Call Sell strike for buying", m_useCallSellStrikeForBuying);
+        callPanel.add("Call Buy length from sell", m_callBuyLengthFromSell);
+
+        VerticalPanel putPanel = new VerticalPanel();
+        putPanel.add("Put Sell length from spot", m_putSellLengthFromSpot);
+        putPanel.add("Use Put Sell strike for buying", m_usePutSellStrikeForBuying);
+        putPanel.add("Put Buy length from sell", m_putBuyLengthFromSell);
+        hp2.add(callPanel);
+        hp2.add(putPanel);
+        p.add(hp2);
         return p;
     }
 
