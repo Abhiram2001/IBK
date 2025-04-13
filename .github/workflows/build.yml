@@ -22,6 +22,7 @@ jobs:
         run: mvn package
 
       - name: Create custom runtime image
+        shell: cmd
         run: |
           jlink ^
             --output runtime ^
