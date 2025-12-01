@@ -28,11 +28,16 @@ jobs:
     - name: Build JAR with Maven
       run: mvn clean package -DskipTests
 
+    - name: Prepare input for jpackage
+      run: |
+        mkdir jpackage-input
+        copy target\ibkr-trading-strategies.jar jpackage-input\
+
     - name: Build Windows executable with jpackage
       run: |
         jpackage `
           --type app-image `
-          --input target `
+          --input jpackage-input `
           --name "IBKR-Trading-Strategies" `
           --main-jar ibkr-trading-strategies.jar `
           --main-class apidemo.stategies.TradingStrategies `
