@@ -23,6 +23,7 @@
     </dependencies>
 
     <build>
+        <finalName>ibkr-trading-strategies</finalName>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -33,6 +34,7 @@
                         <phase>package</phase>
                         <goals><goal>shade</goal></goals>
                         <configuration>
+                            <finalName>ibkr-trading-strategies</finalName>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>apidemo.stategies.TradingStrategies</mainClass>
