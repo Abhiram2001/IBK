@@ -17,6 +17,23 @@ import java.time.LocalDate;
 import java.util.Calendar;
 import java.util.Date;
 
+/**
+ * Panel for executing Strangle option strategies on SPY.
+ * A strangle involves selling both a call and put option at different strike prices,
+ * both out-of-the-money. This strategy profits when the underlying stays within a range.
+ * 
+ * <p>Features:</p>
+ * <ul>
+ *   <li>Automatic SPY price fetching</li>
+ *   <li>Configurable call and put strike distances</li>
+ *   <li>Single expiration date for both options</li>
+ *   <li>Automatic contract detail population</li>
+ *   <li>Simultaneous placement of call and put orders</li>
+ * </ul>
+ * 
+ * @author IBK Trading System
+ * @version 1.0
+ */
 public class StrangleStrategyPanel extends JPanel {
     private final TradingStrategies m_parent;
     private final JDateChooser m_expiryDate;
@@ -39,6 +56,11 @@ public class StrangleStrategyPanel extends JPanel {
         }
     };
 
+    /**
+     * Constructs a new StrangleStrategyPanel.
+     * 
+     * @param parent the parent TradingStrategies instance for accessing the API controller
+     */
     public StrangleStrategyPanel(TradingStrategies parent) {
         m_parent = parent;
         setLayout(new BorderLayout());
@@ -63,6 +85,11 @@ public class StrangleStrategyPanel extends JPanel {
         add(mainPanel, BorderLayout.CENTER);
     }
 
+    /**
+     * Creates the input panel with all strategy parameter fields.
+     * 
+     * @return VerticalPanel containing input fields for expiry date, spot price, and strike distances
+     */
     private VerticalPanel getInputPanel() {
         VerticalPanel p = new VerticalPanel();
         p.add("Expiry date", m_expiryDate);
@@ -72,6 +99,11 @@ public class StrangleStrategyPanel extends JPanel {
         return p;
     }
 
+    /**
+     * Creates the button panel with action buttons.
+     * 
+     * @return VerticalPanel containing action buttons for populating defaults, contracts, and placing orders
+     */
     private VerticalPanel getButtonPanel() {
         HtmlButton populateDefaults = new HtmlButton("Populate defaults") {
             @Override
@@ -105,6 +137,12 @@ public class StrangleStrategyPanel extends JPanel {
         return butPanel;
     }
 
+    /**
+     * Creates and configures a date chooser component with calendar popup.
+     * Limits selectable dates to between today and one year from today.
+     * 
+     * @return configured JDateChooser instance
+     */
     private JDateChooser createDateChooser() {
         JDateChooser dateChooser = new JDateChooser();
         dateChooser.setPreferredSize(new Dimension(150, 25));
@@ -135,6 +173,12 @@ public class StrangleStrategyPanel extends JPanel {
         return dateChooser;
     }
 
+    /**
+     * Populates default strategy parameters based on current spot price.
+     * Sets default strike distances of 5 points from spot.
+     * 
+     * @param spotPrice current SPY spot price
+     */
     private void populateDefaults(double spotPrice) {
         SwingUtilities.invokeLater(() -> {
             m_spotPrice.setText("" + CalendarSpreadStrategyPanel.customRound(spotPrice));
@@ -145,6 +189,9 @@ public class StrangleStrategyPanel extends JPanel {
         });
     }
 
+    /**
+     * Populates default expiry date to 7 days from today.
+     */
     private void populateDates() {
         LocalDate todayDate = LocalDate.now();
         Calendar calendar = Calendar.getInstance();
@@ -153,6 +200,10 @@ public class StrangleStrategyPanel extends JPanel {
         m_expiryDate.setDate(calendar.getTime());
     }
 
+    /**
+     * Creates option contracts and populates their details from IB.
+     * Resets the contract counter and requests details for both call and put options.
+     */
     private void createAndPopulateContracts() {
         createContracts();
         contractsLoaded = 0;
@@ -160,6 +211,10 @@ public class StrangleStrategyPanel extends JPanel {
         populateContractDetails(m_putContract, false);
     }
 
+    /**
+     * Creates option contracts for both legs of the strangle.
+     * Calculates strike prices based on spot price and configured distances.
+     */
     private void createContracts() {
         double spotPrice = m_spotPrice.getDouble();
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
@@ -172,6 +227,14 @@ public class StrangleStrategyPanel extends JPanel {
         m_putContract = createOptionContract("P", putStrike, expiryDate);
     }
 
+    /**
+     * Creates an SPY option contract with specified parameters.
+     * 
+     * @param right option right - "C" for call, "P" for put
+     * @param strike strike price
+     * @param date expiration date in yyyyMMdd format
+     * @return configured option Contract
+     */
     private Contract createOptionContract(String right, double strike, String date) {
         Contract contract = new Contract();
         contract.symbol("SPY");
@@ -185,6 +248,13 @@ public class StrangleStrategyPanel extends JPanel {
         return contract;
     }
 
+    /**
+     * Requests contract details from IB for a given option contract.
+     * Updates the status and enables order placement when both contracts are loaded.
+     * 
+     * @param contract the option contract to query
+     * @param isCall true if this is a call option, false for put option
+     */
     private void populateContractDetails(Contract contract, boolean isCall) {
         m_parent.controller().reqContractDetails(contract, list -> {
             if (list.size() > 1) {
@@ -206,6 +276,10 @@ public class StrangleStrategyPanel extends JPanel {
         });
     }
 
+    /**
+     * Places separate limit orders for both the call and put options.
+     * Each order is submitted independently with GTC (Good-Till-Cancel) time in force.
+     */
     private void onPlaceOrder() {
         // Place call order
         Order callOrder = new Order();
@@ -261,6 +335,10 @@ public class StrangleStrategyPanel extends JPanel {
                 });
     }
 
+    /**
+     * Fetches the current SPY stock price from IB.
+     * Uses market data subscription to get the latest price.
+     */
     private void fetchCurrentSPYPrice() {
         Contract spyContract = new Contract();
         spyContract.symbol("SPY");

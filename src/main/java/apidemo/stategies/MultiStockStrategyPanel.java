@@ -11,6 +11,23 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Panel for executing multi-stock trading strategies.
+ * Allows simultaneous placement of up to 4 stock orders with configurable symbols,
+ * quantities, prices, and buy/sell actions.
+ * 
+ * <p>Features:</p>
+ * <ul>
+ *   <li>Support for up to 4 simultaneous stock orders</li>
+ *   <li>Configurable symbol, quantity, and limit price for each order</li>
+ *   <li>Individual buy/sell action selection</li>
+ *   <li>Default values for common tech stocks</li>
+ *   <li>Batch order placement</li>
+ * </ul>
+ * 
+ * @author IBK Trading System
+ * @version 1.0
+ */
 public class MultiStockStrategyPanel extends JPanel {
     private final TradingStrategies m_parent;
     private final List<StockEntry> m_stockEntries = new ArrayList<>();
@@ -18,6 +35,10 @@ public class MultiStockStrategyPanel extends JPanel {
     private HtmlButton m_placeOrderButton;
     private static final int MAX_STOCKS = 4;
 
+    /**
+     * Data holder for a single stock order entry.
+     * Contains fields for symbol, quantity, price, and buy/sell action.
+     */
     private static class StockEntry {
         final UpperField symbol = new UpperField();
         final UpperField quantity = new UpperField();
@@ -25,6 +46,11 @@ public class MultiStockStrategyPanel extends JPanel {
         final JCheckBox isSell = new JCheckBox("Sell");
     }
 
+    /**
+     * Constructs a new MultiStockStrategyPanel.
+     * 
+     * @param parent the parent TradingStrategies instance for accessing the API controller
+     */
     public MultiStockStrategyPanel(TradingStrategies parent) {
         m_parent = parent;
         setLayout(new BorderLayout());
@@ -109,6 +135,10 @@ public class MultiStockStrategyPanel extends JPanel {
         add(mainPanel, BorderLayout.CENTER);
     }
 
+    /**
+     * Populates default values for common tech stocks (AAPL, MSFT, GOOGL, AMZN).
+     * Sets default quantities to 100 shares and marks all as SELL orders.
+     */
     private void populateDefaultValues() {
         // Example default values
         String[] defaultSymbols = { "AAPL", "MSFT", "GOOGL", "AMZN" };
@@ -125,6 +155,10 @@ public class MultiStockStrategyPanel extends JPanel {
         m_placeOrderButton.setVisible(true);
     }
 
+    /**
+     * Places limit orders for all stocks with non-empty symbols.
+     * Each order is submitted independently as a limit order with GTC time in force.
+     */
     private void placeOrders() {
         m_status.setText("Placing orders...");
 

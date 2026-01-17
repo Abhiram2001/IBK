@@ -12,6 +12,14 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Main application class for Interactive Brokers trading strategies.
+ * Provides a GUI interface for connecting to IB TWS/Gateway and executing various trading strategies
+ * including Calendar Spreads, Strangles, and Multi-Stock trades.
+ * 
+ * @author IBK Trading System
+ * @version 1.0
+ */
 public class TradingStrategies implements IConnectionHandler {
     static {
         NewLookAndFeel.register();
@@ -35,20 +43,43 @@ public class TradingStrategies implements IConnectionHandler {
     private final StrangleStrategyPanel m_stranglePanel = new StrangleStrategyPanel(this);
     private final MultiStockStrategyPanel m_multiStockPanel = new MultiStockStrategyPanel(this);
 
+    /**
+     * Application entry point. Creates and starts the TradingStrategies application
+     * with default connection configuration.
+     * 
+     * @param args command line arguments (not used)
+     */
     public static void main(String[] args) {
         start(new TradingStrategies(new IConnectionConfiguration.DefaultConnectionConfiguration()));
     }
 
+    /**
+     * Starts the trading strategies application with a given instance.
+     * Sets the global INSTANCE reference and initializes the GUI.
+     * 
+     * @param instance the TradingStrategies instance to start
+     */
     public static void start(TradingStrategies instance) {
         INSTANCE = instance;
         instance.run();
     }
 
+    /**
+     * Constructs a new TradingStrategies application.
+     * 
+     * @param connectionConfig configuration for IB connection parameters
+     */
     public TradingStrategies(IConnectionConfiguration connectionConfig) {
         m_connectionConfiguration = connectionConfig;
         m_connectionPanel = new ConnectionPanel();
     }
 
+    /**
+     * Gets or creates the API controller for communicating with IB TWS/Gateway.
+     * Lazily initializes the controller on first access.
+     * 
+     * @return the ApiController instance
+     */
     public ApiController controller() {
         if (m_controller == null) {
             m_controller = new ApiController(this, getInLogger(), getOutLogger());
@@ -56,14 +87,29 @@ public class TradingStrategies implements IConnectionHandler {
         return m_controller;
     }
 
+    /**
+     * Gets the logger for incoming messages from IB.
+     * 
+     * @return the incoming message logger
+     */
     private ApiConnection.ILogger getInLogger() {
         return m_inLogger;
     }
 
+    /**
+     * Gets the logger for outgoing messages to IB.
+     * 
+     * @return the outgoing message logger
+     */
     private ApiConnection.ILogger getOutLogger() {
         return m_outLogger;
     }
 
+    /**
+     * Initializes and displays the main application window.
+     * Sets up the tabbed interface with strategy panels and log views.
+     * Automatically attempts to connect to IB TWS/Gateway on localhost:7497.
+     */
     private void run() {
         m_tabbedPanel.addTab("Connection", m_connectionPanel);
         m_tabbedPanel.addTab("Calendar Spread", m_calendarSpreadPanel);
@@ -99,6 +145,10 @@ public class TradingStrategies implements IConnectionHandler {
                         : null);
     }
 
+    /**
+     * Called when successfully connected to IB TWS/Gateway.
+     * Requests server time and bulletin subscriptions.
+     */
     @Override
     public void connected() {
         show("connected");
@@ -113,12 +163,20 @@ public class TradingStrategies implements IConnectionHandler {
         });
     }
 
+    /**
+     * Called when disconnected from IB TWS/Gateway.
+     */
     @Override
     public void disconnected() {
         show("disconnected");
         m_connectionPanel.m_status.setText("disconnected");
     }
 
+    /**
+     * Called when the account list is received from IB.
+     * 
+     * @param list list of account identifiers
+     */
     @Override
     public void accountList(List<String> list) {
         show("Received account list");
@@ -126,11 +184,24 @@ public class TradingStrategies implements IConnectionHandler {
         m_acctList.addAll(list);
     }
 
+    /**
+     * Called when an exception occurs in the API connection.
+     * 
+     * @param e the exception that occurred
+     */
     @Override
     public void error(Exception e) {
         show(e.toString());
     }
 
+    /**
+     * Called when a message is received from IB.
+     * 
+     * @param id request identifier
+     * @param errorCode error code (0 if not an error)
+     * @param errorMsg error or informational message
+     * @param advancedOrderRejectJson JSON string with advanced order rejection details (may be null)
+     */
     @Override
     public void message(int id, int errorCode, String errorMsg, String advancedOrderRejectJson) {
         String error = id + " " + errorCode + " " + errorMsg;
@@ -140,6 +211,12 @@ public class TradingStrategies implements IConnectionHandler {
         show(error);
     }
 
+    /**
+     * Displays a message in the application's message log.
+     * Thread-safe - executes on the Swing event dispatch thread.
+     * 
+     * @param str the message to display
+     */
     @Override
     public void show(String str) {
         SwingUtilities.invokeLater(() -> {
@@ -151,6 +228,10 @@ public class TradingStrategies implements IConnectionHandler {
         });
     }
 
+    /**
+     * Panel for managing the connection to IB TWS/Gateway.
+     * Provides UI controls for host, port, client ID, and connection options.
+     */
     private class ConnectionPanel extends JPanel {
         private final JTextField m_host = new JTextField(m_connectionConfiguration.getDefaultHost(), 10);
         private final JTextField m_port = new JTextField(m_connectionConfiguration.getDefaultPort(), 7);
@@ -206,6 +287,10 @@ public class TradingStrategies implements IConnectionHandler {
             add(p4, BorderLayout.NORTH);
         }
 
+        /**
+         * Handles the connect button action.
+         * Parses connection parameters and initiates connection to IB.
+         */
         void onConnect() {
             int port = Integer.parseInt(m_port.getText());
             int clientId = Integer.parseInt(m_clientId.getText());
@@ -213,6 +298,10 @@ public class TradingStrategies implements IConnectionHandler {
         }
     }
 
+    /**
+     * Logger implementation for API messages.
+     * Displays log messages in a JTextArea component.
+     */
     private static class Logger implements ApiConnection.ILogger {
         final private JTextArea m_area;
 

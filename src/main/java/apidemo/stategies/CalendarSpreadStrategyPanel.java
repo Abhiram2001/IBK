@@ -21,6 +21,23 @@ import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 
+/**
+ * Panel for executing Calendar Spread option strategies on SPY.
+ * A calendar spread involves selling near-term options and buying longer-term options
+ * at the same or different strike prices. This strategy profits from time decay.
+ * 
+ * <p>Features:</p>
+ * <ul>
+ *   <li>Automatic SPY price fetching</li>
+ *   <li>Configurable call and put spreads</li>
+ *   <li>Support for both call and put calendar spreads</li>
+ *   <li>Automatic contract detail population</li>
+ *   <li>Combo order placement as a single transaction</li>
+ * </ul>
+ * 
+ * @author IBK Trading System
+ * @version 1.0
+ */
 public class CalendarSpreadStrategyPanel extends JPanel {
     private final TradingStrategies m_parent;
     private final JDateChooser m_currentExpiryDate;
@@ -43,6 +60,9 @@ public class CalendarSpreadStrategyPanel extends JPanel {
 
     private Contract m_putSellContract, m_callSellContract, m_putBuyContract, m_callBuyContract;
 
+    /**
+     * Enum representing the type of option contract in the calendar spread.
+     */
     enum ContractType {
         PUT_SELL, CALL_SELL, PUT_BUY, CALL_BUY;
     }
@@ -60,6 +80,10 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         }
     };
 
+    /**
+     * Creates option contracts and populates their details from IB.
+     * Resets the contract counter and requests details for all four legs.
+     */
     private void createAndPopulateContracts() {
         createContracts();
         numberOfContractsLoaded = 0;
@@ -69,6 +93,11 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         populateContractDetails(m_putBuyContract, ContractType.PUT_BUY);
     }
 
+    /**
+     * Constructs a new CalendarSpreadStrategyPanel.
+     * 
+     * @param parent the parent TradingStrategies instance for accessing the API controller
+     */
     public CalendarSpreadStrategyPanel(TradingStrategies parent) {
         m_parent = parent;
         setLayout(new BorderLayout());
@@ -165,6 +194,11 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         });
     }
 
+    /**
+     * Creates and configures a date chooser component with calendar popup.
+     * 
+     * @return configured JDateChooser instance
+     */
     private JDateChooser createDateChooser() {
         JDateChooser dateChooser = new JDateChooser();
         dateChooser.setPreferredSize(new Dimension(150, 25));
@@ -195,6 +229,11 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         return dateChooser;
     }
 
+    /**
+     * Creates the input panel with all strategy parameter fields.
+     * 
+     * @return VerticalPanel containing input fields
+     */
     private VerticalPanel getInputPanel() {
         VerticalPanel p = new VerticalPanel();
         p.add("Current expiry", m_currentExpiryDate);
@@ -239,6 +278,11 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         return p;
     }
 
+    /**
+     * Creates the button panel with action buttons.
+     * 
+     * @return VerticalPanel containing action buttons
+     */
     private VerticalPanel getButtonPanel() {
         HtmlButton populateDefaults = new HtmlButton("Populate defaults") {
             @Override
@@ -273,6 +317,12 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         return butPanel;
     }
 
+    /**
+     * Populates default strategy parameters based on current spot price.
+     * Sets reasonable default values for strikes and quantities.
+     * 
+     * @param spotPrice current SPY spot price
+     */
     private void populateDefaults(double spotPrice) {
         SwingUtilities.invokeLater(() -> {
             m_spotPrice.setText("" + customRound(spotPrice));
@@ -290,6 +340,10 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         });
     }
 
+    /**
+     * Populates default expiry dates.
+     * Sets current expiry to 7 days from today and next expiry to 14 days.
+     */
     private void populateDates() {
         LocalDate todayDate = LocalDate.now();
         Calendar calendar = Calendar.getInstance();
@@ -304,6 +358,13 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         m_nextExpiryDate.setDate(calendar.getTime());
     }
 
+    /**
+     * Requests contract details from IB for a given option contract.
+     * Updates the status and enables order placement when all contracts are loaded.
+     * 
+     * @param contract the option contract to query
+     * @param type the type of contract (CALL_SELL, PUT_SELL, CALL_BUY, PUT_BUY)
+     */
     protected void populateContractDetails(Contract contract, final ContractType type) {
         m_parent.controller().reqContractDetails(contract, list -> {
             if (list.size() > 1) {
@@ -329,6 +390,10 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         });
     }
 
+    /**
+     * Places the calendar spread order as a combo/BAG order.
+     * Creates a BAG contract with all four legs and submits as a limit order.
+     */
     protected void onPlaceOrder() {
         Contract comboContract = new Contract();
         comboContract.symbol("SPY");
@@ -365,6 +430,10 @@ public class CalendarSpreadStrategyPanel extends JPanel {
                 });
     }
 
+    /**
+     * Fetches the current SPY stock price from IB.
+     * Uses market data subscription to get the latest price.
+     */
     private void fetchCurrentSPYPrice() {
         Contract spyContract = new Contract();
         spyContract.symbol("SPY");
@@ -374,6 +443,10 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         m_parent.controller().reqTopMktData(spyContract, "", false, false, m_stockListener);
     }
 
+    /**
+     * Creates option contracts for all four legs of the calendar spread.
+     * Calculates strike prices based on spot price and configured deltas.
+     */
     private void createContracts() {
         double spotPrice = m_spotPrice.getDouble();
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd");
@@ -395,6 +468,14 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         m_putBuyContract = createOptionContract("P", spotPrice - putBuyDelta, dateAfter14Days);
     }
 
+    /**
+     * Creates an SPY option contract with specified parameters.
+     * 
+     * @param right option right - "C" for call, "P" for put
+     * @param strike strike price
+     * @param date expiration date in yyyyMMdd format
+     * @return configured option Contract
+     */
     private Contract createOptionContract(String right, double strike, String date) {
         Contract contract = new Contract();
         contract.symbol("SPY");
@@ -408,6 +489,12 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         return contract;
     }
 
+    /**
+     * Populates combo legs for the BAG order based on contract type.
+     * 
+     * @param contract the option contract with populated conid
+     * @param type the type of contract determining BUY or SELL action
+     */
     private void populateLegs(Contract contract, ContractType type) {
         ComboLeg leg = new ComboLeg();
         leg.conid(contract.conid());
@@ -440,6 +527,13 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         }
     }
 
+    /**
+     * Custom rounding function that rounds to nearest integer.
+     * Values > 0.5 round up, otherwise round down.
+     * 
+     * @param value the value to round
+     * @return rounded value
+     */
     public static double customRound(double value) {
         double fractionalPart = value - Math.floor(value);
         if (fractionalPart > 0.5) {
@@ -449,6 +543,12 @@ public class CalendarSpreadStrategyPanel extends JPanel {
         }
     }
 
+    /**
+     * Returns the positive value or zero if negative.
+     * 
+     * @param value the input value
+     * @return max(value, 0)
+     */
     public static double getPositiveOrZero(double value) {
         return Math.max(value, 0);
     }
