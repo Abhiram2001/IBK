@@ -24,8 +24,9 @@ public class TradingApplication implements IConnectionHandler {
 
     private TradingApplication() {
         this.config = ConnectionConfig.getDefault();
-        this.connectionService = new ConnectionService(this, config);
-        this.mainFrame = new MainFrame(connectionService, config);
+        this.mainFrame = new MainFrame(null, config);
+        this.connectionService = new ConnectionService(this, config, mainFrame::showMessage);
+        this.mainFrame.setConnectionService(connectionService);
     }
 
     public static void main(String[] args) {

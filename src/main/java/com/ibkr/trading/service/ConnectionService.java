@@ -20,10 +20,12 @@ public class ConnectionService {
     private final List<String> accounts = new ArrayList<>();
     private final MarketDataService marketDataService;
     private final OrderService orderService;
+    private final Consumer<String> messageHandler;
     private boolean connected = false;
 
-    public ConnectionService(ApiController.IConnectionHandler handler, ConnectionConfig config) {
+    public ConnectionService(ApiController.IConnectionHandler handler, ConnectionConfig config, Consumer<String> messageHandler) {
         this.config = config;
+        this.messageHandler = messageHandler;
         this.controller = new ApiController(handler, new SilentLogger(), new SilentLogger());
         this.marketDataService = new MarketDataService(controller);
         this.orderService = new OrderService(controller);
@@ -74,14 +76,22 @@ public class ConnectionService {
     }
 
     private void requestServerTime() {
-        controller.reqCurrentTime(time -> 
-            System.out.println("Server time: " + Formats.fmtDate(time * 1000))
-        );
+        controller.reqCurrentTime(time -> {
+            String timeMsg = "Server time: " + Formats.fmtDate(time * 1000);
+            if (messageHandler != null) {
+                messageHandler.accept(timeMsg);
+            }
+        });
     }
 
     private void subscribeToBulletins() {
         controller.reqBulletins(true, (msgId, newsType, message, exchange) -> {
-            System.out.println("Bulletin [" + newsType + " @ " + exchange + "]: " + message);
+            if (messageHandler != null) {
+                String bulletinHeader = "Bulletin [" + newsType + " @ " + exchange + "]: " + 
+                    "======================================================";
+                messageHandler.accept(bulletinHeader);
+                messageHandler.accept(message);
+            }
         });
     }
 

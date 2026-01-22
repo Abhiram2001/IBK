@@ -36,7 +36,7 @@ public class MultiStockPanel extends JPanel {
     
     private final OrderService orderService;
     private final List<StockEntry> stockEntries = new ArrayList<>();
-    private final JLabel statusLabel;
+    private final JTextArea statusArea;
     private final JButton executeButton;
     
     /**
@@ -78,9 +78,14 @@ public class MultiStockPanel extends JPanel {
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
         
-        // Initialize execute button first (before createControlPanel)
+        // Initialize components
         executeButton = new JButton("Place Orders");
         executeButton.setVisible(false);
+        
+        statusArea = new JTextArea(3, 40);
+        statusArea.setEditable(false);
+        statusArea.setLineWrap(true);
+        statusArea.setWrapStyleWord(true);
         
         // Title
         JLabel titleLabel = new JLabel("Multi-Stock Strategy", SwingConstants.CENTER);
@@ -100,10 +105,11 @@ public class MultiStockPanel extends JPanel {
         
         add(contentPanel, BorderLayout.CENTER);
         
-        // Status label at bottom
-        statusLabel = new JLabel(" ", SwingConstants.CENTER);
-        statusLabel.setForeground(Color.BLUE);
-        add(statusLabel, BorderLayout.SOUTH);
+        // Fixed-height status area at bottom
+        JScrollPane statusScroll = new JScrollPane(statusArea);
+        statusScroll.setPreferredSize(new Dimension(10000, 60));
+        statusScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
+        add(statusScroll, BorderLayout.SOUTH);
     }
     
     /**
@@ -192,9 +198,8 @@ public class MultiStockPanel extends JPanel {
             entry.sellCheckBox.setSelected(true);
         }
         
-        statusLabel.setText("Default values populated for " + DEFAULT_SYMBOLS.length + " stocks");
-        statusLabel.setForeground(Color.BLUE);
         executeButton.setVisible(true);
+        updateStatus("Default values populated for " + DEFAULT_SYMBOLS.length + " stocks");
     }
     
     /**
@@ -202,8 +207,7 @@ public class MultiStockPanel extends JPanel {
      */
     private void clearAll() {
         stockEntries.forEach(StockEntry::clear);
-        statusLabel.setText("All fields cleared");
-        statusLabel.setForeground(Color.BLUE);
+        updateStatus("All fields cleared");
         executeButton.setVisible(false);
     }
     
@@ -215,8 +219,7 @@ public class MultiStockPanel extends JPanel {
             MultiStockStrategy strategy = buildStrategy();
             
             if (strategy.getOrders().isEmpty()) {
-                statusLabel.setText("Error: No valid orders to place");
-                statusLabel.setForeground(Color.RED);
+                updateStatus("Error: No valid orders to place");
                 return;
             }
             
@@ -231,20 +234,17 @@ public class MultiStockPanel extends JPanel {
             );
             
             if (result != JOptionPane.YES_OPTION) {
-                statusLabel.setText("Order placement cancelled");
-                statusLabel.setForeground(Color.ORANGE);
+                updateStatus("Order placement cancelled");
                 return;
             }
             
             // Place orders
-            statusLabel.setText("Placing " + orderCount + " orders...");
-            statusLabel.setForeground(Color.BLUE);
+            updateStatus("Placing " + orderCount + " orders...");
             
             placeOrders(strategy);
             
         } catch (IllegalArgumentException e) {
-            statusLabel.setText("Error: " + e.getMessage());
-            statusLabel.setForeground(Color.RED);
+            updateStatus("Error: " + e.getMessage());
             JOptionPane.showMessageDialog(this, e.getMessage(), "Validation Error", JOptionPane.ERROR_MESSAGE);
         }
     }
@@ -313,33 +313,34 @@ public class MultiStockPanel extends JPanel {
                 order.isSell()
             ).thenAccept(success -> {
                 if (success) {
-                    SwingUtilities.invokeLater(() -> {
-                        statusLabel.setText(String.format(
+                    SwingUtilities.invokeLater(() -> 
+                        updateStatus(String.format(
                             "Order placed: %s %d %s @ $%.2f",
                             order.getAction(),
                             order.getQuantity(),
                             order.getSymbol(),
                             order.getLimitPrice()
-                        ));
-                        statusLabel.setForeground(Color.GREEN);
-                    });
+                        ))
+                    );
                 }
             }).exceptionally(ex -> {
-                SwingUtilities.invokeLater(() -> {
-                    statusLabel.setText("Error placing order for " + order.getSymbol() + ": " + ex.getMessage());
-                    statusLabel.setForeground(Color.RED);
-                });
+                SwingUtilities.invokeLater(() -> 
+                    updateStatus("Error placing order for " + order.getSymbol() + ": " + ex.getMessage())
+                );
                 return null;
             });
         }
         
         // Final status after all orders
-        SwingUtilities.invokeLater(() -> {
-            statusLabel.setText(String.format(
+        SwingUtilities.invokeLater(() -> 
+            updateStatus(String.format(
                 "Completed: %d orders placed",
                 strategy.getOrders().size()
-            ));
-            statusLabel.setForeground(Color.GREEN);
-        });
+            ))
+        );
+    }
+    
+    private void updateStatus(String message) {
+        statusArea.setText(message);
     }
 }

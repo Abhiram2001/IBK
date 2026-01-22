@@ -7,6 +7,7 @@ import com.ibkr.trading.ui.panel.CalendarSpreadPanel;
 import com.ibkr.trading.ui.panel.StranglePanel;
 import com.ibkr.trading.ui.panel.MultiStockPanel;
 
+import java.util.Objects;
 import javax.swing.*;
 import java.awt.*;
 
@@ -24,50 +25,95 @@ public class MainFrame {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (ClassNotFoundException | InstantiationException | 
                  IllegalAccessException | UnsupportedLookAndFeelException e) {
-            // Fall back to default cross-platform look and feel
-            System.err.println("Could not set system look and feel: " + e.getMessage());
+            // Fall back to default cross-platform look and feel - will log after UI initialization
         }
     }
 
     private final JFrame frame;
     private final JTextArea messageArea;
     private final JTabbedPane tabbedPanel;
-    private final ConnectionPanel connectionPanel;
-    private final CalendarSpreadPanel calendarSpreadPanel;
-    private final StranglePanel stranglePanel;
-    private final MultiStockPanel multiStockPanel;
+    private ConnectionPanel connectionPanel;
+    private CalendarSpreadPanel calendarSpreadPanel;
+    private StranglePanel stranglePanel;
+    private MultiStockPanel multiStockPanel;
 
     public MainFrame(ConnectionService connectionService, ConnectionConfig config) {
         this.frame = new JFrame("IBK Trading System - Production v2.0");
         this.messageArea = new JTextArea();
         this.tabbedPanel = new JTabbedPane();
         
+        if (connectionService != null) {
+            initializePanels(connectionService, config);
+        }
+        
+        initializeUI();
+    }
+    
+    public void setConnectionService(ConnectionService connectionService) {
+        ConnectionConfig config = ConnectionConfig.getDefault();
+        initializePanels(connectionService, config);
+        updateTabbedPanels();
+    }
+    
+    private void initializePanels(ConnectionService connectionService, ConnectionConfig config) {
         this.connectionPanel = new ConnectionPanel(connectionService, config);
         this.calendarSpreadPanel = new CalendarSpreadPanel(connectionService);
         this.stranglePanel = new StranglePanel(connectionService);
         this.multiStockPanel = new MultiStockPanel(connectionService.getOrderService());
-        
-        initializeUI();
     }
-
-    private void initializeUI() {
-        // Set application icon
-        try {
-            ImageIcon icon = new ImageIcon(getClass().getResource("/TBI.ico"));
-            if (icon.getImageLoadStatus() == MediaTracker.COMPLETE) {
-                frame.setIconImage(icon.getImage());
-            } else {
-                // Try PNG fallback if ICO doesn't load
-                System.err.println("Could not load TBI.ico, application will use default icon");
-            }
-        } catch (Exception e) {
-            System.err.println("Could not load application icon: " + e.getMessage());
-        }
-        
+    
+    private void updateTabbedPanels() {
+        tabbedPanel.removeAll();
         tabbedPanel.addTab("Connection", connectionPanel);
         tabbedPanel.addTab("Calendar Spread", calendarSpreadPanel);
         tabbedPanel.addTab("Strangle", stranglePanel);
         tabbedPanel.addTab("Multi-Stock", multiStockPanel);
+    }
+
+    private void initializeUI() {
+        // Set application icon (try PNG first, fallback to ICO)
+        boolean iconLoaded = false;
+        
+        // Try PNG format (most compatible with Java)
+        try {
+            java.net.URL iconURL = getClass().getResource("/TBI.png");
+            if (iconURL != null) {
+                ImageIcon icon = new ImageIcon(iconURL);
+                if (icon.getImageLoadStatus() == MediaTracker.COMPLETE && icon.getIconWidth() > 0) {
+                    frame.setIconImage(icon.getImage());
+                    iconLoaded = true;
+                }
+            }
+        } catch (Exception e) {
+            // Try ICO format as fallback
+        }
+        
+        // Fallback to ICO if PNG not found
+        if (!iconLoaded) {
+            try {
+                java.net.URL iconURL = getClass().getResource("/TBI.ico");
+                if (iconURL != null) {
+                    ImageIcon icon = new ImageIcon(iconURL);
+                    if (icon.getImageLoadStatus() == MediaTracker.COMPLETE && icon.getIconWidth() > 0) {
+                        frame.setIconImage(icon.getImage());
+                        iconLoaded = true;
+                    }
+                }
+            } catch (Exception e) {
+                // Silently fail - will use default Java icon
+            }
+        }
+        
+        if (!iconLoaded) {
+            showMessage("Note: Using default application icon");
+        }
+        
+        if (connectionPanel != null) {
+            tabbedPanel.addTab("Connection", connectionPanel);
+            tabbedPanel.addTab("Calendar Spread", calendarSpreadPanel);
+            tabbedPanel.addTab("Strangle", stranglePanel);
+            tabbedPanel.addTab("Multi-Stock", multiStockPanel);
+        }
 
         messageArea.setEditable(false);
         messageArea.setLineWrap(true);
@@ -110,5 +156,27 @@ public class MainFrame {
 
     private void scrollToBottom() {
         messageArea.setCaretPosition(messageArea.getDocument().getLength());
+    }
+    
+    private void loadApplicationIcon() {
+        // Try multiple icon formats for cross-platform compatibility
+        String[] iconPaths = {"/TBI.png", "/TBI.ico", "/TBI.icns"};
+        
+        for (String iconPath : iconPaths) {
+            try {
+                java.net.URL iconURL = getClass().getResource(iconPath);
+                if (iconURL != null) {
+                    ImageIcon icon = new ImageIcon(iconURL);
+                    // Check if icon loaded successfully and has valid dimensions
+                    if (icon.getImageLoadStatus() == MediaTracker.COMPLETE && 
+                        icon.getIconWidth() > 0 && icon.getIconHeight() > 0) {
+                        frame.setIconImage(icon.getImage());
+                        return; // Successfully loaded
+                    }
+                }
+            } catch (Exception e) {
+                // Try next format
+            }
+        }
     }
 }

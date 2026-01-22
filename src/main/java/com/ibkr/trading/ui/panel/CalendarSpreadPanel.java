@@ -33,11 +33,16 @@ public class CalendarSpreadPanel extends JPanel {
     private final UpperField callBuyOffsetField = new UpperField();
     private final UpperField putBuyOffsetField = new UpperField();
     private final UpperField quantityField = new UpperField();
+    private final UpperField limitPriceField = new UpperField();
     private final JCheckBox includeCallCheckbox = new JCheckBox("Include Call", true);
     private final JCheckBox includePutCheckbox = new JCheckBox("Include Put", true);
-    private final JLabel statusLabel = new JLabel();
+    private final JTextArea statusArea = new JTextArea(3, 40);
     
     private CalendarSpread currentStrategy;
+    private ContractDetails callSellDetails;
+    private ContractDetails putSellDetails;
+    private ContractDetails callBuyDetails;
+    private ContractDetails putBuyDetails;
 
     public CalendarSpreadPanel(ConnectionService connectionService) {
         this.marketDataService = new MarketDataService(connectionService.getController());
@@ -64,9 +69,18 @@ public class CalendarSpreadPanel extends JPanel {
         mainPanel.add(Box.createVerticalStrut(20));
         mainPanel.add(inputPanel);
         mainPanel.add(buttonPanel);
-        mainPanel.add(statusLabel);
 
         add(mainPanel, BorderLayout.CENTER);
+        
+        // Fixed-height status area attached to bottom
+        statusArea.setEditable(false);
+        statusArea.setLineWrap(true);
+        statusArea.setWrapStyleWord(true);
+        statusArea.setBackground(getBackground());
+        JScrollPane statusScroll = new JScrollPane(statusArea);
+        statusScroll.setPreferredSize(new Dimension(500, 60));
+        statusScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
+        add(statusScroll, BorderLayout.SOUTH);
     }
 
     private VerticalPanel createInputPanel() {
@@ -74,11 +88,12 @@ public class CalendarSpreadPanel extends JPanel {
         panel.add("Near Expiry", nearExpiryChooser);
         panel.add("Far Expiry", farExpiryChooser);
         panel.add("Spot Price", spotPriceField);
-        panel.add("Quantity", quantityField);
         panel.add("Call Sell Offset", callSellOffsetField);
         panel.add("Call Buy Offset", callBuyOffsetField);
         panel.add("Put Sell Offset", putSellOffsetField);
         panel.add("Put Buy Offset", putBuyOffsetField);
+        panel.add("Quantity", quantityField);
+        panel.add("Limit Price", limitPriceField);
         
         JPanel checkboxPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         checkboxPanel.add(includeCallCheckbox);
@@ -100,16 +115,16 @@ public class CalendarSpreadPanel extends JPanel {
         return new HtmlButton("Fetch SPY Price") {
             @Override
             protected void actionPerformed() {
-                statusLabel.setText("Fetching price...");
+                updateStatus("Fetching price...");
                 marketDataService.getStockPrice("SPY")
                     .thenAccept(price -> SwingUtilities.invokeLater(() -> {
                         spotPriceField.setText(String.format("%.2f", price));
                         populateDefaults();
-                        statusLabel.setText("Price fetched: $" + String.format("%.2f", price));
+                        updateStatus("Price fetched: $" + String.format("%.2f", price));
                     }))
                     .exceptionally(ex -> {
                         SwingUtilities.invokeLater(() -> 
-                            statusLabel.setText("Error: " + ex.getMessage()));
+                            updateStatus("Error: " + ex.getMessage()));
                         return null;
                     });
             }
@@ -122,10 +137,10 @@ public class CalendarSpreadPanel extends JPanel {
             protected void actionPerformed() {
                 try {
                     currentStrategy = buildStrategy();
-                    statusLabel.setText("Validating contracts...");
+                    updateStatus("Validating contracts...");
                     validateContracts();
                 } catch (Exception e) {
-                    statusLabel.setText("Error: " + e.getMessage());
+                    updateStatus("Error: " + e.getMessage());
                 }
             }
         };
@@ -136,7 +151,7 @@ public class CalendarSpreadPanel extends JPanel {
             @Override
             protected void actionPerformed() {
                 if (currentStrategy == null) {
-                    statusLabel.setText("Please validate contracts first");
+                    updateStatus("Please validate contracts first");
                     return;
                 }
                 placeOrder();
@@ -153,6 +168,7 @@ public class CalendarSpreadPanel extends JPanel {
         putSellOffsetField.setText("5");
         callBuyOffsetField.setText("8");
         putBuyOffsetField.setText("8");
+        limitPriceField.setText("0.50");
     }
 
     private CalendarSpread buildStrategy() {
@@ -173,40 +189,156 @@ public class CalendarSpreadPanel extends JPanel {
     private void validateContracts() {
         List<CompletableFuture<ContractDetails>> futures = new ArrayList<>();
         
+        // Reset contract details
+        callSellDetails = null;
+        putSellDetails = null;
+        callBuyDetails = null;
+        putBuyDetails = null;
+        
+        // Validate sell call contract
         if (currentStrategy.getSellCallContract() != null) {
             futures.add(orderService.getContractDetails(
                 currentStrategy.getSellCallContract().toIBContract())
-                .thenApply(list -> list.get(0)));
+                .thenApply(list -> {
+                    if (list.size() != 1) {
+                        throw new IllegalStateException("Expected 1 call sell contract, found " + list.size());
+                    }
+                    callSellDetails = list.get(0);
+                    return callSellDetails;
+                }));
         }
+        
+        // Validate buy call contract
         if (currentStrategy.getBuyCallContract() != null) {
             futures.add(orderService.getContractDetails(
                 currentStrategy.getBuyCallContract().toIBContract())
-                .thenApply(list -> list.get(0)));
+                .thenApply(list -> {
+                    if (list.size() != 1) {
+                        throw new IllegalStateException("Expected 1 call buy contract, found " + list.size());
+                    }
+                    callBuyDetails = list.get(0);
+                    return callBuyDetails;
+                }));
         }
+        
+        // Validate sell put contract
         if (currentStrategy.getSellPutContract() != null) {
             futures.add(orderService.getContractDetails(
                 currentStrategy.getSellPutContract().toIBContract())
-                .thenApply(list -> list.get(0)));
+                .thenApply(list -> {
+                    if (list.size() != 1) {
+                        throw new IllegalStateException("Expected 1 put sell contract, found " + list.size());
+                    }
+                    putSellDetails = list.get(0);
+                    return putSellDetails;
+                }));
         }
+        
+        // Validate buy put contract
         if (currentStrategy.getBuyPutContract() != null) {
             futures.add(orderService.getContractDetails(
                 currentStrategy.getBuyPutContract().toIBContract())
-                .thenApply(list -> list.get(0)));
+                .thenApply(list -> {
+                    if (list.size() != 1) {
+                        throw new IllegalStateException("Expected 1 put buy contract, found " + list.size());
+                    }
+                    putBuyDetails = list.get(0);
+                    return putBuyDetails;
+                }));
         }
 
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
             .thenRun(() -> SwingUtilities.invokeLater(() -> 
-                statusLabel.setText("All contracts validated. Ready to place order.")))
+                updateStatus("All contracts validated successfully. Ready to place order.")))
             .exceptionally(ex -> {
                 SwingUtilities.invokeLater(() -> 
-                    statusLabel.setText("Validation failed: " + ex.getMessage()));
+                    updateStatus("Validation failed: " + ex.getMessage()));
                 return null;
             });
     }
 
     private void placeOrder() {
-        statusLabel.setText("Placing order...");
-        statusLabel.setText("Order placement - connect to OrderService as needed");
+        // Verify all required contracts are validated
+        if (!areContractsValidated()) {
+            updateStatus("Please validate contracts first");
+            return;
+        }
+        
+        updateStatus("Creating BAG order...");
+        
+        // Create combo legs
+        List<ComboLeg> legs = new ArrayList<>();
+        
+        // Add SELL call leg (near-term)
+        if (callSellDetails != null) {
+            ComboLeg leg = new ComboLeg();
+            leg.conid(callSellDetails.contract().conid());
+            leg.ratio(1);
+            leg.action("SELL");
+            leg.exchange("SMART");
+            legs.add(leg);
+        }
+        
+        // Add SELL put leg (near-term)
+        if (putSellDetails != null) {
+            ComboLeg leg = new ComboLeg();
+            leg.conid(putSellDetails.contract().conid());
+            leg.ratio(1);
+            leg.action("SELL");
+            leg.exchange("SMART");
+            legs.add(leg);
+        }
+        
+        // Add BUY call leg (far-term)
+        if (callBuyDetails != null) {
+            ComboLeg leg = new ComboLeg();
+            leg.conid(callBuyDetails.contract().conid());
+            leg.ratio(1);
+            leg.action("BUY");
+            leg.exchange("SMART");
+            legs.add(leg);
+        }
+        
+        // Add BUY put leg (far-term)
+        if (putBuyDetails != null) {
+            ComboLeg leg = new ComboLeg();
+            leg.conid(putBuyDetails.contract().conid());
+            leg.ratio(1);
+            leg.action("BUY");
+            leg.exchange("SMART");
+            legs.add(leg);
+        }
+        
+        if (legs.isEmpty()) {
+            updateStatus("Error: No legs to place");
+            return;
+        }
+        
+        // Place combo order
+        double limitPrice = limitPriceField.getDouble();
+        int quantity = quantityField.getInt();
+        
+        updateStatus("Placing BAG order with " + legs.size() + " legs...");
+        
+        orderService.placeComboOrder(legs, limitPrice, quantity, 
+            status -> SwingUtilities.invokeLater(() -> updateStatus(status)));
+    }
+    
+    private boolean areContractsValidated() {
+        boolean includeCall = includeCallCheckbox.isSelected();
+        boolean includePut = includePutCheckbox.isSelected();
+        
+        if (includeCall && (callSellDetails == null || callBuyDetails == null)) {
+            return false;
+        }
+        if (includePut && (putSellDetails == null || putBuyDetails == null)) {
+            return false;
+        }
+        return includeCall || includePut;
+    }
+    
+    private void updateStatus(String message) {
+        statusArea.setText(message);
     }
 
     private LocalDate toLocalDate(java.util.Date date) {
