@@ -5,8 +5,8 @@ import com.ib.client.Contract;
 import java.util.Objects;
 
 /**
- * Domain object representing an option contract with builder pattern.
- * Provides immutable, fluent interface for creating option contracts.
+ * Domain object representing an option contract with a builder pattern.
+ * Provides an immutable, fluent interface for creating option contracts.
  */
 public class OptionContract {
     private final String symbol;
@@ -47,7 +47,7 @@ public class OptionContract {
     }
 
     public static class Builder {
-        private String symbol = "SPY";
+        private String symbol = "";
         private String secType = "OPT";
         private String exchange = "SMART";
         private String currency = "USD";

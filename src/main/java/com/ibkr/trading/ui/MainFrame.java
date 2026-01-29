@@ -4,10 +4,10 @@ import com.ibkr.trading.config.ConnectionConfig;
 import com.ibkr.trading.service.ConnectionService;
 import com.ibkr.trading.ui.panel.ConnectionPanel;
 import com.ibkr.trading.ui.panel.CalendarSpreadPanel;
+import com.ibkr.trading.ui.panel.PreMarketCloseOrderPanel;
 import com.ibkr.trading.ui.panel.StranglePanel;
 import com.ibkr.trading.ui.panel.MultiStockPanel;
 
-import java.util.Objects;
 import javax.swing.*;
 import java.awt.*;
 
@@ -36,6 +36,7 @@ public class MainFrame {
     private CalendarSpreadPanel calendarSpreadPanel;
     private StranglePanel stranglePanel;
     private MultiStockPanel multiStockPanel;
+    private PreMarketCloseOrderPanel preMarketCloseOrderPanel;
 
     public MainFrame(ConnectionService connectionService, ConnectionConfig config) {
         this.frame = new JFrame("IBK Trading System - Production v2.0");
@@ -60,6 +61,7 @@ public class MainFrame {
         this.calendarSpreadPanel = new CalendarSpreadPanel(connectionService);
         this.stranglePanel = new StranglePanel(connectionService);
         this.multiStockPanel = new MultiStockPanel(connectionService.getOrderService());
+        this.preMarketCloseOrderPanel = new PreMarketCloseOrderPanel(connectionService);
     }
     
     private void updateTabbedPanels() {
@@ -68,6 +70,7 @@ public class MainFrame {
         tabbedPanel.addTab("Calendar Spread", calendarSpreadPanel);
         tabbedPanel.addTab("Strangle", stranglePanel);
         tabbedPanel.addTab("Multi-Stock", multiStockPanel);
+        tabbedPanel.addTab("Pre-Market Close", preMarketCloseOrderPanel);
     }
 
     private void initializeUI() {
@@ -113,6 +116,7 @@ public class MainFrame {
             tabbedPanel.addTab("Calendar Spread", calendarSpreadPanel);
             tabbedPanel.addTab("Strangle", stranglePanel);
             tabbedPanel.addTab("Multi-Stock", multiStockPanel);
+            tabbedPanel.addTab("Pre-Market Close", preMarketCloseOrderPanel);
         }
 
         messageArea.setEditable(false);

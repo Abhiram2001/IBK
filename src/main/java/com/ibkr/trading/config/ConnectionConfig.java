@@ -3,6 +3,7 @@ package com.ibkr.trading.config;
 /**
  * Configuration for IB TWS/Gateway connection parameters.
  * Encapsulates all connection-related settings with sensible defaults.
+ * Values are loaded from application.properties and can be overridden by environment variables.
  */
 public class ConnectionConfig {
     private final String host;
@@ -18,7 +19,13 @@ public class ConnectionConfig {
     }
 
     public static ConnectionConfig getDefault() {
-        return new Builder().build();
+        AppConfig config = AppConfig.getInstance();
+        return new Builder()
+                .host(config.getConnectionHost())
+                .port(config.getConnectionPort())
+                .clientId(config.getConnectionClientId())
+                .connectOptions(config.getConnectionOptions())
+                .build();
     }
 
     public String getHost() {
@@ -38,10 +45,10 @@ public class ConnectionConfig {
     }
 
     public static class Builder {
-        private String host = "127.0.0.1";
-        private int port = 7497; // Paper trading port
-        private int clientId = 0;
-        private String connectOptions = "+PACEAPI";
+        private String host = AppConfig.getInstance().getConnectionHost();
+        private int port = AppConfig.getInstance().getConnectionPort();
+        private int clientId = AppConfig.getInstance().getConnectionClientId();
+        private String connectOptions = AppConfig.getInstance().getConnectionOptions();
 
         public Builder host(String host) {
             this.host = host;

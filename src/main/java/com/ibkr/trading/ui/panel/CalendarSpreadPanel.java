@@ -1,8 +1,9 @@
 package com.ibkr.trading.ui.panel;
 
-import apidemo.util.HtmlButton;
-import apidemo.util.UpperField;
-import apidemo.util.VerticalPanel;
+import com.ibkr.trading.ui.util.HtmlButton;
+import com.ibkr.trading.ui.util.UpperField;
+import com.ibkr.trading.ui.util.VerticalPanel;
+import com.ibkr.trading.config.AppConfig;
 import com.ibkr.trading.domain.CalendarSpread;
 import com.ibkr.trading.domain.OptionContract;
 import com.ibkr.trading.service.*;
@@ -22,9 +23,10 @@ import java.util.concurrent.CompletableFuture;
  * Panel for executing Calendar Spread strategies using functional approach.
  */
 public class CalendarSpreadPanel extends JPanel {
-    private final MarketDataService marketDataService;
-    private final OrderService orderService;
+    private final transient MarketDataService marketDataService;
+    private final transient OrderService orderService;
     
+    private final JLabel symbolLabel = new JLabel();
     private final JDateChooser nearExpiryChooser;
     private final JDateChooser farExpiryChooser;
     private final UpperField spotPriceField = new UpperField();
@@ -38,19 +40,27 @@ public class CalendarSpreadPanel extends JPanel {
     private final JCheckBox includePutCheckbox = new JCheckBox("Include Put", true);
     private final JTextArea statusArea = new JTextArea(3, 40);
     
-    private CalendarSpread currentStrategy;
-    private ContractDetails callSellDetails;
-    private ContractDetails putSellDetails;
-    private ContractDetails callBuyDetails;
-    private ContractDetails putBuyDetails;
+    private transient ContractDetails callSellDetails;
+    private transient ContractDetails putSellDetails;
+    private transient ContractDetails callBuyDetails;
+    private transient ContractDetails putBuyDetails;
 
     public CalendarSpreadPanel(ConnectionService connectionService) {
         this.marketDataService = new MarketDataService(connectionService.getController());
         this.orderService = new OrderService(connectionService.getController());
+        updateSymbolLabel();
         this.nearExpiryChooser = UIComponents.createDateChooser();
         this.farExpiryChooser = UIComponents.createDateChooser();
         
         initializeUI();
+        
+        // Add component listener to refresh symbol when panel becomes visible
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentShown(java.awt.event.ComponentEvent e) {
+                updateSymbolLabel();
+            }
+        });
     }
 
     private void initializeUI() {
@@ -72,19 +82,45 @@ public class CalendarSpreadPanel extends JPanel {
 
         add(mainPanel, BorderLayout.CENTER);
         
-        // Fixed-height status area attached to bottom
+        // Create styled status panel with border and title
+        JPanel statusPanel = new JPanel(new BorderLayout());
+        statusPanel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(Color.GRAY),
+            "Status",
+            javax.swing.border.TitledBorder.LEFT,
+            javax.swing.border.TitledBorder.TOP
+        ));
+        
         statusArea.setEditable(false);
         statusArea.setLineWrap(true);
         statusArea.setWrapStyleWord(true);
-        statusArea.setBackground(getBackground());
+        statusArea.setBackground(new Color(255, 255, 224)); // Light yellow background
+        statusArea.setFont(new Font("Monospaced", Font.PLAIN, 11));
+        statusArea.setMargin(new Insets(5, 5, 5, 5));
+        
         JScrollPane statusScroll = new JScrollPane(statusArea);
         statusScroll.setPreferredSize(new Dimension(500, 60));
         statusScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
-        add(statusScroll, BorderLayout.SOUTH);
+        statusPanel.add(statusScroll, BorderLayout.CENTER);
+        
+        add(statusPanel, BorderLayout.SOUTH);
     }
 
     private VerticalPanel createInputPanel() {
         VerticalPanel panel = new VerticalPanel();
+        
+        // Display symbol as read-only label
+        symbolLabel.setFont(symbolLabel.getFont().deriveFont(Font.BOLD, 14f));
+        symbolLabel.setForeground(new Color(0, 100, 0));
+        JPanel symbolPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        symbolPanel.add(new JLabel("Symbol: "));
+        symbolPanel.add(symbolLabel);
+        JLabel symbolNote = new JLabel("(Set in Connection Panel)");
+        symbolNote.setFont(symbolNote.getFont().deriveFont(Font.ITALIC, 10f));
+        symbolNote.setForeground(Color.GRAY);
+        symbolPanel.add(symbolNote);
+        panel.add("", symbolPanel);
+        
         panel.add("Near Expiry", nearExpiryChooser);
         panel.add("Far Expiry", farExpiryChooser);
         panel.add("Spot Price", spotPriceField);
@@ -112,15 +148,21 @@ public class CalendarSpreadPanel extends JPanel {
     }
 
     private HtmlButton createFetchPriceButton() {
-        return new HtmlButton("Fetch SPY Price") {
+        return new HtmlButton("Fetch Stock Price") {
             @Override
             protected void actionPerformed() {
-                updateStatus("Fetching price...");
-                marketDataService.getStockPrice("SPY")
+                updateSymbolLabel(); // Refresh symbol from AppConfig
+                String symbol = getCurrentSymbol();
+                if (symbol.isEmpty()) {
+                    updateStatus("Error: Please set Trading Symbol in Connection Panel first");
+                    return;
+                }
+                updateStatus("Fetching " + symbol + " price...");
+                marketDataService.getStockPrice(symbol)
                     .thenAccept(price -> SwingUtilities.invokeLater(() -> {
                         spotPriceField.setText(String.format("%.2f", price));
                         populateDefaults();
-                        updateStatus("Price fetched: $" + String.format("%.2f", price));
+                        updateStatus("Price fetched for " + symbol + ": $" + String.format("%.2f", price));
                     }))
                     .exceptionally(ex -> {
                         SwingUtilities.invokeLater(() -> 
@@ -135,10 +177,11 @@ public class CalendarSpreadPanel extends JPanel {
         return new HtmlButton("Validate Contracts") {
             @Override
             protected void actionPerformed() {
+                updateSymbolLabel(); // Refresh symbol from AppConfig
                 try {
-                    currentStrategy = buildStrategy();
+                    CalendarSpread strategy = buildStrategy();
                     updateStatus("Validating contracts...");
-                    validateContracts();
+                    validateContracts(strategy);
                 } catch (Exception e) {
                     updateStatus("Error: " + e.getMessage());
                 }
@@ -150,7 +193,7 @@ public class CalendarSpreadPanel extends JPanel {
         return new HtmlButton("Place Order") {
             @Override
             protected void actionPerformed() {
-                if (currentStrategy == null) {
+                if (!areContractsValidated()) {
                     updateStatus("Please validate contracts first");
                     return;
                 }
@@ -173,6 +216,7 @@ public class CalendarSpreadPanel extends JPanel {
 
     private CalendarSpread buildStrategy() {
         return CalendarSpread.builder()
+            .symbol(getCurrentSymbol())
             .spotPrice(spotPriceField.getDouble())
             .quantity(quantityField.getInt())
             .nearExpiry(toLocalDate(nearExpiryChooser.getDate()))
@@ -185,8 +229,17 @@ public class CalendarSpreadPanel extends JPanel {
             .includePut(includePutCheckbox.isSelected())
             .build();
     }
+    
+    private String getCurrentSymbol() {
+        return AppConfig.getInstance().getCurrentTradingSymbol();
+    }
+    
+    private void updateSymbolLabel() {
+        String symbol = getCurrentSymbol();
+        symbolLabel.setText(symbol.isEmpty() ? "<Not Set>" : symbol);
+    }
 
-    private void validateContracts() {
+    private void validateContracts(CalendarSpread strategy) {
         List<CompletableFuture<ContractDetails>> futures = new ArrayList<>();
         
         // Reset contract details
@@ -196,9 +249,9 @@ public class CalendarSpreadPanel extends JPanel {
         putBuyDetails = null;
         
         // Validate sell call contract
-        if (currentStrategy.getSellCallContract() != null) {
+        if (strategy.getSellCallContract() != null) {
             futures.add(orderService.getContractDetails(
-                currentStrategy.getSellCallContract().toIBContract())
+                strategy.getSellCallContract().toIBContract())
                 .thenApply(list -> {
                     if (list.size() != 1) {
                         throw new IllegalStateException("Expected 1 call sell contract, found " + list.size());
@@ -209,9 +262,9 @@ public class CalendarSpreadPanel extends JPanel {
         }
         
         // Validate buy call contract
-        if (currentStrategy.getBuyCallContract() != null) {
+        if (strategy.getBuyCallContract() != null) {
             futures.add(orderService.getContractDetails(
-                currentStrategy.getBuyCallContract().toIBContract())
+                strategy.getBuyCallContract().toIBContract())
                 .thenApply(list -> {
                     if (list.size() != 1) {
                         throw new IllegalStateException("Expected 1 call buy contract, found " + list.size());
@@ -222,9 +275,9 @@ public class CalendarSpreadPanel extends JPanel {
         }
         
         // Validate sell put contract
-        if (currentStrategy.getSellPutContract() != null) {
+        if (strategy.getSellPutContract() != null) {
             futures.add(orderService.getContractDetails(
-                currentStrategy.getSellPutContract().toIBContract())
+                strategy.getSellPutContract().toIBContract())
                 .thenApply(list -> {
                     if (list.size() != 1) {
                         throw new IllegalStateException("Expected 1 put sell contract, found " + list.size());
@@ -235,9 +288,9 @@ public class CalendarSpreadPanel extends JPanel {
         }
         
         // Validate buy put contract
-        if (currentStrategy.getBuyPutContract() != null) {
+        if (strategy.getBuyPutContract() != null) {
             futures.add(orderService.getContractDetails(
-                currentStrategy.getBuyPutContract().toIBContract())
+                strategy.getBuyPutContract().toIBContract())
                 .thenApply(list -> {
                     if (list.size() != 1) {
                         throw new IllegalStateException("Expected 1 put buy contract, found " + list.size());
@@ -317,10 +370,11 @@ public class CalendarSpreadPanel extends JPanel {
         // Place combo order
         double limitPrice = limitPriceField.getDouble();
         int quantity = quantityField.getInt();
+        String symbol = getCurrentSymbol();
         
         updateStatus("Placing BAG order with " + legs.size() + " legs...");
         
-        orderService.placeComboOrder(legs, limitPrice, quantity, 
+        orderService.placeComboOrder(symbol, legs, limitPrice, quantity, "BUY",
             status -> SwingUtilities.invokeLater(() -> updateStatus(status)));
     }
     

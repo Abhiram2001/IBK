@@ -34,7 +34,7 @@ public class MultiStockPanel extends JPanel {
     private static final String DEFAULT_QUANTITY = "100";
     private static final String[] DEFAULT_PRICES = {"150.0", "350.0", "140.0", "175.0"};
     
-    private final OrderService orderService;
+    private final transient OrderService orderService;
     private final List<StockEntry> stockEntries = new ArrayList<>();
     private final JTextArea statusArea;
     private final JButton executeButton;
@@ -105,11 +105,28 @@ public class MultiStockPanel extends JPanel {
         
         add(contentPanel, BorderLayout.CENTER);
         
-        // Fixed-height status area at bottom
+        // Create styled status panel with border and title
+        JPanel statusPanel = new JPanel(new BorderLayout());
+        statusPanel.setBorder(BorderFactory.createTitledBorder(
+            BorderFactory.createLineBorder(Color.GRAY),
+            "Status",
+            javax.swing.border.TitledBorder.LEFT,
+            javax.swing.border.TitledBorder.TOP
+        ));
+        
+        statusArea.setEditable(false);
+        statusArea.setLineWrap(true);
+        statusArea.setWrapStyleWord(true);
+        statusArea.setBackground(new Color(255, 255, 224)); // Light yellow background
+        statusArea.setFont(new Font("Monospaced", Font.PLAIN, 11));
+        statusArea.setMargin(new Insets(5, 5, 5, 5));
+        
         JScrollPane statusScroll = new JScrollPane(statusArea);
         statusScroll.setPreferredSize(new Dimension(10000, 60));
         statusScroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 60));
-        add(statusScroll, BorderLayout.SOUTH);
+        statusPanel.add(statusScroll, BorderLayout.CENTER);
+        
+        add(statusPanel, BorderLayout.SOUTH);
     }
     
     /**

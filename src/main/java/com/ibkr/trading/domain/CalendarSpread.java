@@ -11,6 +11,7 @@ import java.time.format.DateTimeFormatter;
 public class CalendarSpread extends SpreadStrategy {
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     
+    private final String symbol;
     private final LocalDate nearExpiry;
     private final LocalDate farExpiry;
     private final double callSellOffset;
@@ -22,6 +23,7 @@ public class CalendarSpread extends SpreadStrategy {
 
     private CalendarSpread(Builder builder) {
         super(builder.spotPrice, builder.quantity);
+        this.symbol = builder.symbol;
         this.nearExpiry = builder.nearExpiry;
         this.farExpiry = builder.farExpiry;
         this.callSellOffset = builder.callSellOffset;
@@ -40,6 +42,7 @@ public class CalendarSpread extends SpreadStrategy {
     public OptionContract getSellCallContract() {
         if (!includeCall) return null;
         return OptionContract.builder()
+                .symbol(symbol)
                 .strike(roundToNearestStrike(spotPrice + callSellOffset))
                 .expiration(nearExpiry.format(DATE_FORMAT))
                 .call()
@@ -49,6 +52,7 @@ public class CalendarSpread extends SpreadStrategy {
     public OptionContract getSellPutContract() {
         if (!includePut) return null;
         return OptionContract.builder()
+                .symbol(symbol)
                 .strike(roundToNearestStrike(spotPrice - putSellOffset))
                 .expiration(nearExpiry.format(DATE_FORMAT))
                 .put()
@@ -58,6 +62,7 @@ public class CalendarSpread extends SpreadStrategy {
     public OptionContract getBuyCallContract() {
         if (!includeCall) return null;
         return OptionContract.builder()
+                .symbol(symbol)
                 .strike(roundToNearestStrike(spotPrice + callBuyOffset))
                 .expiration(farExpiry.format(DATE_FORMAT))
                 .call()
@@ -67,6 +72,7 @@ public class CalendarSpread extends SpreadStrategy {
     public OptionContract getBuyPutContract() {
         if (!includePut) return null;
         return OptionContract.builder()
+                .symbol(symbol)
                 .strike(roundToNearestStrike(spotPrice - putBuyOffset))
                 .expiration(farExpiry.format(DATE_FORMAT))
                 .put()
@@ -78,6 +84,7 @@ public class CalendarSpread extends SpreadStrategy {
     }
 
     public static class Builder {
+        private String symbol = "";
         private double spotPrice;
         private int quantity = 1;
         private LocalDate nearExpiry;
@@ -88,6 +95,11 @@ public class CalendarSpread extends SpreadStrategy {
         private double putBuyOffset = 8;
         private boolean includeCall = true;
         private boolean includePut = true;
+
+        public Builder symbol(String symbol) {
+            this.symbol = symbol;
+            return this;
+        }
 
         public Builder spotPrice(double spotPrice) {
             this.spotPrice = spotPrice;
