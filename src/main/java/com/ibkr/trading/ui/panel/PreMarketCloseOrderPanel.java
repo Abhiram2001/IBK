@@ -257,12 +257,14 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitorServ
         panel.add(orderTypeCombo, gbc);
         
         // Add button
-        JButton addButton = UIComponents.createButton("Add to List", e -> 
+        JButton addButton = new JButton("Add to List");
+        addButton.addActionListener(e -> 
             addConfiguration(symbolField, expiryChooser, actionCombo, optionTypeCombo,
                            strikeField, targetPriceField, alertThresholdField, 
                            quantityField, orderTypeCombo));
-        addButton.setBackground(new Color(33, 150, 243));
-        addButton.setForeground(Color.WHITE);
+        addButton.setForeground(new Color(33, 150, 243)); // Blue text
+        addButton.setFont(new Font("Arial", Font.BOLD, 12));
+        addButton.setFocusPainted(false);
         
         gbc.gridx = col++;
         gbc.gridwidth = 2;
@@ -274,25 +276,31 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitorServ
     private JPanel createButtonPanel() {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 10));
         
-        JButton startAllButton = UIComponents.createButton("Start Monitoring All", e -> startMonitoringAll());
-        startAllButton.setBackground(new Color(76, 175, 80));
-        startAllButton.setForeground(Color.WHITE);
+        JButton startAllButton = new JButton("Start Monitoring All");
+        startAllButton.addActionListener(e -> startMonitoringAll());
+        startAllButton.setForeground(new Color(76, 175, 80)); // Green text
         startAllButton.setFont(new Font("Arial", Font.BOLD, 14));
         startAllButton.setPreferredSize(new Dimension(200, 35));
+        startAllButton.setFocusPainted(false);
         
-        JButton stopAllButton = UIComponents.createButton("Stop All Monitoring", e -> stopAllMonitoring());
-        stopAllButton.setBackground(new Color(244, 67, 54));
-        stopAllButton.setForeground(Color.WHITE);
+        JButton stopAllButton = new JButton("Stop All Monitoring");
+        stopAllButton.addActionListener(e -> stopAllMonitoring());
+        stopAllButton.setForeground(new Color(244, 67, 54)); // Red text
         stopAllButton.setFont(new Font("Arial", Font.BOLD, 14));
         stopAllButton.setPreferredSize(new Dimension(200, 35));
+        stopAllButton.setFocusPainted(false);
         
-        JButton removeButton = UIComponents.createButton("Remove Selected", e -> removeSelectedConfig());
+        JButton removeButton = new JButton("Remove Selected");
+        removeButton.addActionListener(e -> removeSelectedConfig());
+        removeButton.setFont(new Font("Arial", Font.PLAIN, 12));
+        removeButton.setFocusPainted(false);
         
-        JButton importButton = UIComponents.createButton("Import from Excel", e -> importFromExcel());
-        importButton.setBackground(new Color(255, 152, 0));
-        importButton.setForeground(Color.WHITE);
+        JButton importButton = new JButton("Import from Excel");
+        importButton.addActionListener(e -> importFromExcel());
+        importButton.setForeground(new Color(255, 152, 0)); // Orange text
         importButton.setFont(new Font("Arial", Font.BOLD, 14));
         importButton.setPreferredSize(new Dimension(200, 35));
+        importButton.setFocusPainted(false);
         
         panel.add(importButton);
         panel.add(startAllButton);

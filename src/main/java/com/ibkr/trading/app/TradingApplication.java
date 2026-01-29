@@ -63,7 +63,8 @@ public class TradingApplication implements IConnectionHandler {
     @Override
     public void accountList(List<String> accounts) {
         connectionService.setAccounts(accounts);
-        mainFrame.showMessage("Received " + accounts.size() + " account(s)");
+        mainFrame.showMessage("Received " + accounts.size() + " account(s): " + String.join(", ", accounts));
+        mainFrame.updateAccountsList();
     }
 
     @Override

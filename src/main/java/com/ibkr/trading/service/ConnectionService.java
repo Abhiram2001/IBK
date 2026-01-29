@@ -20,6 +20,7 @@ public class ConnectionService {
     private final List<String> accounts = new ArrayList<>();
     private final MarketDataService marketDataService;
     private final OrderService orderService;
+    private final SymbolValidationService symbolValidationService;
     private final Consumer<String> messageHandler;
     private boolean connected = false;
 
@@ -29,6 +30,7 @@ public class ConnectionService {
         this.controller = new ApiController(handler, new SilentLogger(), new SilentLogger());
         this.marketDataService = new MarketDataService(controller);
         this.orderService = new OrderService(controller);
+        this.symbolValidationService = new SymbolValidationService(controller);
     }
 
     public void connect(String host, int port, int clientId, String options) {
@@ -64,6 +66,10 @@ public class ConnectionService {
 
     public OrderService getOrderService() {
         return orderService;
+    }
+    
+    public SymbolValidationService getSymbolValidationService() {
+        return symbolValidationService;
     }
 
     public List<String> getAccounts() {
