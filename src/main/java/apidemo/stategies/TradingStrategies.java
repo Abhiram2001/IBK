@@ -42,6 +42,7 @@ public class TradingStrategies implements IConnectionHandler {
     private final CalendarSpreadStrategyPanel m_calendarSpreadPanel = new CalendarSpreadStrategyPanel(this);
     private final StrangleStrategyPanel m_stranglePanel = new StrangleStrategyPanel(this);
     private final MultiStockStrategyPanel m_multiStockPanel = new MultiStockStrategyPanel(this);
+    private final PreMarketCloseOrderPanel m_preMarketCloseOrderPanel = new PreMarketCloseOrderPanel(this);
 
     /**
      * Application entry point. Creates and starts the TradingStrategies application
@@ -115,6 +116,7 @@ public class TradingStrategies implements IConnectionHandler {
         m_tabbedPanel.addTab("Calendar Spread", m_calendarSpreadPanel);
         m_tabbedPanel.addTab("Strangle", m_stranglePanel);
         m_tabbedPanel.addTab("Multi Stock", m_multiStockPanel);
+        m_tabbedPanel.addTab("Pre-Market Close Orders", m_preMarketCloseOrderPanel);
 
         m_msg.setEditable(false);
         m_msg.setLineWrap(true);

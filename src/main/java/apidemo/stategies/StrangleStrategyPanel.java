@@ -40,9 +40,12 @@ public class StrangleStrategyPanel extends JPanel {
     private final UpperField m_spotPrice = new UpperField();
     private final UpperField m_callStrikeDistance = new UpperField();
     private final UpperField m_putStrikeDistance = new UpperField();
+    private final UpperField m_comboLimitPrice = new UpperField();
     private final JLabel m_status = new JLabel();
     private HtmlButton m_placeOrderButton;
     private Contract m_callContract, m_putContract;
+    private int m_callContractId = 0;
+    private int m_putContractId = 0;
     private int contractsLoaded = 0;
     private static final int TOTAL_CONTRACTS = 2;
 
@@ -96,6 +99,7 @@ public class StrangleStrategyPanel extends JPanel {
         p.add("Spot price", m_spotPrice);
         p.add("Call strike distance", m_callStrikeDistance);
         p.add("Put strike distance", m_putStrikeDistance);
+        p.add("Combo limit price", m_comboLimitPrice);
         return p;
     }
 
@@ -185,6 +189,7 @@ public class StrangleStrategyPanel extends JPanel {
             populateDates();
             m_callStrikeDistance.setText("5");
             m_putStrikeDistance.setText("5");
+            m_comboLimitPrice.setText("1.0");
             m_status.setText("Default values loaded successfully.");
         });
     }
@@ -268,6 +273,14 @@ public class StrangleStrategyPanel extends JPanel {
                 return;
             }
 
+            // Store the contract ID for BAG creation
+            ContractDetails details = list.get(0);
+            if (isCall) {
+                m_callContractId = details.contract().conid();
+            } else {
+                m_putContractId = details.contract().conid();
+            }
+
             contractsLoaded++;
             if (contractsLoaded == TOTAL_CONTRACTS) {
                 m_placeOrderButton.setVisible(true);
@@ -277,49 +290,51 @@ public class StrangleStrategyPanel extends JPanel {
     }
 
     /**
-     * Places separate limit orders for both the call and put options.
-     * Each order is submitted independently with GTC (Good-Till-Cancel) time in force.
+     * Places a single BAG order containing both call and put options as a strangle strategy.
+     * This ensures both legs appear as one combined trade in TWS.
      */
     private void onPlaceOrder() {
-        // Place call order
-        Order callOrder = new Order();
-        callOrder.orderType("LMT");
-        callOrder.lmtPrice(0.50);
-        callOrder.action("SELL");
-        callOrder.totalQuantity(Decimal.get(1));
-        callOrder.tif("GTC");
+        // Create BAG contract for the strangle
+        Contract comboContract = new Contract();
+        comboContract.symbol("SPY");
+        comboContract.secType("BAG");
+        comboContract.currency("USD");
+        comboContract.exchange("SMART");
 
-        m_parent.controller().placeOrModifyOrder(m_callContract, callOrder,
+        // Create combo leg for call option
+        ComboLeg callLeg = new ComboLeg();
+        callLeg.conid(m_callContractId);
+        callLeg.ratio(1);
+        callLeg.action("BUY");
+        callLeg.exchange("SMART");
+
+        // Create combo leg for put option
+        ComboLeg putLeg = new ComboLeg();
+        putLeg.conid(m_putContractId);
+        putLeg.ratio(1);
+        putLeg.action("BUY");
+        putLeg.exchange("SMART");
+
+        // Add legs to combo contract
+        java.util.List<ComboLeg> comboLegs = new java.util.ArrayList<>();
+        comboLegs.add(callLeg);
+        comboLegs.add(putLeg);
+        comboContract.comboLegs(comboLegs);
+
+        // Create order for the combo
+        Order comboOrder = new Order();
+        comboOrder.orderType("LMT");
+        comboOrder.lmtPrice(m_comboLimitPrice.getDouble()); // User-defined combo limit price
+        comboOrder.action("SELL");
+        comboOrder.totalQuantity(Decimal.get(1));
+        comboOrder.tif("GTC");
+
+        // Place the combo order
+        m_parent.controller().placeOrModifyOrder(comboContract, comboOrder,
                 new ApiController.IOrderHandler() {
                     @Override
                     public void orderState(OrderState orderState, Order order) {
-                        m_status.setText("Call order status: " + orderState.getStatus());
-                    }
-
-                    @Override
-                    public void orderStatus(OrderStatus status, Decimal filled, Decimal remaining,
-                            double avgFillPrice, int permId, int parentId, double lastFillPrice,
-                            int clientId, String whyHeld, double mktCapPrice) {
-                    }
-
-                    @Override
-                    public void handle(int errorCode, String errorMsg) {
-                    }
-                });
-
-        // Place put order
-        Order putOrder = new Order();
-        putOrder.orderType("LMT");
-        putOrder.lmtPrice(0.50);
-        putOrder.action("SELL");
-        putOrder.totalQuantity(Decimal.get(1));
-        putOrder.tif("GTC");
-
-        m_parent.controller().placeOrModifyOrder(m_putContract, putOrder,
-                new ApiController.IOrderHandler() {
-                    @Override
-                    public void orderState(OrderState orderState, Order order) {
-                        m_status.setText("Put order status: " + orderState.getStatus());
+                        m_status.setText("Strangle order status: " + orderState.getStatus());
                         m_placeOrderButton.setVisible(false);
                     }
 
@@ -331,6 +346,7 @@ public class StrangleStrategyPanel extends JPanel {
 
                     @Override
                     public void handle(int errorCode, String errorMsg) {
+                        m_status.setText("Error placing order: " + errorMsg);
                     }
                 });
     }
