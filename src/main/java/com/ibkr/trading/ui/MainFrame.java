@@ -47,7 +47,7 @@ public class MainFrame {
     private PreMarketCloseOrderPanel preMarketCloseOrderPanel;
 
     public MainFrame(ConnectionService connectionService, ConnectionConfig config) {
-        this.frame = new JFrame("IBK Trading System - Production v2.0");
+        this.frame = new JFrame("IBKR Trading System");
         this.messageArea = new JTextArea();
         this.tabbedPanel = new JTabbedPane();
         this.connectionService = connectionService;
@@ -270,6 +270,9 @@ public class MainFrame {
                     symbolLabel.setText("<html>✓ &nbsp;" + symbol + "</html>");
                     symbolLabel.setForeground(new Color(34, 197, 94)); // Green
                     showMessage("[SUCCESS] Trading symbol validated and set to: " + symbol);
+                    
+                    // Notify all panels about symbol change
+                    notifyPanelsSymbolChanged();
                 } else {
                     symbolLabel.setText("[INVALID]");
                     symbolLabel.setForeground(new Color(239, 68, 68)); // Red
@@ -282,6 +285,19 @@ public class MainFrame {
                 }
             });
         }).start();
+    }
+    
+    /**
+     * Notifies all strategy panels that the symbol has changed.
+     */
+    private void notifyPanelsSymbolChanged() {
+        if (calendarSpreadPanel != null) {
+            calendarSpreadPanel.updateSymbolLabel();
+        }
+        if (stranglePanel != null) {
+            stranglePanel.updateSymbolLabel();
+        }
+        // MultiStockPanel and PreMarketCloseOrderPanel have their own symbol fields
     }
     
     /**

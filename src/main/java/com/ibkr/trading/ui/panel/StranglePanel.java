@@ -219,7 +219,7 @@ public class StranglePanel extends JPanel {
         return AppConfig.getInstance().getCurrentTradingSymbol();
     }
     
-    private void updateSymbolLabel() {
+    public void updateSymbolLabel() {
         String symbol = getCurrentSymbol();
         symbolLabel.setText(symbol.isEmpty() ? "<Not Set>" : symbol);
     }
