@@ -43,18 +43,20 @@ public class OrderService {
      * @param limitPrice the net credit/debit limit price
      * @param quantity number of spreads to trade
      * @param comboAction BUY or SELL
+     * @param account the account to place the order in (can be null for default)
      * @param statusCallback callback for status updates
      */
     public void placeComboOrder(String symbol, List<ComboLeg> legs, double limitPrice, int quantity, 
-                                String comboAction, Consumer<String> statusCallback) {
+                                String comboAction, String account, Consumer<String> statusCallback) {
         if (legs == null || legs.isEmpty()) {
             statusCallback.accept("Error: No legs provided for combo order");
             return;
         }
         
         // Log order details for audit trail
-        statusCallback.accept(String.format("Placing combo order: %s BAG, %d legs, Limit=$%.2f, Qty=%d", 
-            symbol, legs.size(), limitPrice, quantity));
+        statusCallback.accept(String.format("Placing combo order: %s BAG, %d legs, Limit=$%.2f, Qty=%d%s", 
+            symbol, legs.size(), limitPrice, quantity, 
+            (account != null ? ", Account=" + account : "")));
         
         Contract comboContract = new Contract();
         comboContract.symbol(symbol);
@@ -69,6 +71,12 @@ public class OrderService {
         order.action(comboAction);
         order.totalQuantity(Decimal.get(quantity));
         order.tif("GTC");
+        
+        // Set account if provided
+        if (account != null && !account.isEmpty()) {
+            order.account(account);
+        }
+
 
         controller.placeOrModifyOrder(comboContract, order, new ApiController.IOrderHandler() {
             @Override
@@ -151,13 +159,18 @@ public class OrderService {
     }
 
     public void placeSimpleOrder(Contract contract, String action, int quantity, 
-                                 double limitPrice, Consumer<String> statusCallback) {
+                                 double limitPrice, String account, Consumer<String> statusCallback) {
         Order order = new Order();
         order.orderType("LMT");
         order.lmtPrice(limitPrice);
         order.action(action);
         order.totalQuantity(Decimal.get(quantity));
         order.tif("GTC");
+        
+        // Set account if provided
+        if (account != null && !account.isEmpty()) {
+            order.account(account);
+        }
 
         controller.placeOrModifyOrder(contract, order, new ApiController.IOrderHandler() {
             @Override
@@ -187,10 +200,11 @@ public class OrderService {
      * @param quantity number of shares
      * @param limitPrice limit price per share
      * @param isSell true for SELL, false for BUY
+     * @param account the account to place the order in (can be null for default)
      * @return CompletableFuture that completes with true on success
      */
     public CompletableFuture<Boolean> placeMultiStockOrder(String symbol, int quantity, 
-                                                           double limitPrice, boolean isSell) {
+                                                           double limitPrice, boolean isSell, String account) {
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         
         Contract contract = new Contract();
@@ -205,6 +219,11 @@ public class OrderService {
         order.action(isSell ? "SELL" : "BUY");
         order.totalQuantity(Decimal.get(quantity));
         order.tif("GTC");
+        
+        // Set account if provided
+        if (account != null && !account.isEmpty()) {
+            order.account(account);
+        }
         
         controller.placeOrModifyOrder(contract, order, new ApiController.IOrderHandler() {
             @Override

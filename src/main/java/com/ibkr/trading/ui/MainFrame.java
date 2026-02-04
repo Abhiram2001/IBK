@@ -218,10 +218,12 @@ public class MainFrame {
      */
     private void onAccountSelected() {
         String selectedAccount = (String) accountSelector.getSelectedItem();
-        if (selectedAccount != null && !selectedAccount.isEmpty()) {
+        if (selectedAccount != null && !selectedAccount.isEmpty() && !"No accounts".equals(selectedAccount)) {
+            AppConfig.getInstance().setCurrentTradingAccount(selectedAccount);
             accountLabel.setText("<html>✓ &nbsp;" + selectedAccount + "</html>");
             showMessage("Selected account: " + selectedAccount);
-            // TODO: You can add logic here to use the selected account for orders
+        } else {
+            AppConfig.getInstance().setCurrentTradingAccount(null);
         }
     }
     
@@ -362,6 +364,7 @@ public class MainFrame {
                 accountSelector.setEnabled(false);
                 accountLabel.setText("No accounts");
                 accountLabel.setForeground(Color.ORANGE);
+                AppConfig.getInstance().setCurrentTradingAccount(null);
             } else {
                 accountSelector.setEnabled(true);
                 for (String account : accounts) {
@@ -370,8 +373,10 @@ public class MainFrame {
                 // Auto-select first account
                 if (accounts.size() > 0) {
                     accountSelector.setSelectedIndex(0);
-                    accountLabel.setText("<html>✓ &nbsp;" + accounts.get(0) + "</html>");
+                    String firstAccount = accounts.get(0);
+                    accountLabel.setText("<html>✓ &nbsp;" + firstAccount + "</html>");
                     accountLabel.setForeground(new Color(46, 204, 113)); // Green
+                    AppConfig.getInstance().setCurrentTradingAccount(firstAccount);
                 }
             }
         });

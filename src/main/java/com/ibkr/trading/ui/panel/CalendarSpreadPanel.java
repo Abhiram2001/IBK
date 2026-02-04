@@ -374,7 +374,8 @@ public class CalendarSpreadPanel extends JPanel {
         
         updateStatus("Placing BAG order with " + legs.size() + " legs...");
         
-        orderService.placeComboOrder(symbol, legs, limitPrice, quantity, "BUY",
+        String account = AppConfig.getInstance().getCurrentTradingAccount();
+        orderService.placeComboOrder(symbol, legs, limitPrice, quantity, "BUY", account,
             status -> SwingUtilities.invokeLater(() -> updateStatus(status)));
     }
     

@@ -1,5 +1,6 @@
 package com.ibkr.trading.ui.panel;
 
+import com.ibkr.trading.config.AppConfig;
 import com.ibkr.trading.service.ConnectionService;
 import com.ibkr.trading.service.OrderService;
 import com.ibkr.trading.service.PriceMonitorService;
@@ -517,11 +518,13 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitorServ
         
         double orderPrice = config.orderType.equals("LMT") ? config.targetPrice : 0.0;
         
+        String account = AppConfig.getInstance().getCurrentTradingAccount();
         orderService.placeSimpleOrder(
             orderContract,
             config.action,
             config.quantity,
             orderPrice,
+            account,
             status -> SwingUtilities.invokeLater(() -> {
                 tableModel.setValueAt("TWS: " + status, rowIndex, 9);
                 if (status.contains("Submitted") || status.contains("PreSubmitted")) {

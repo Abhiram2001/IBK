@@ -1,5 +1,6 @@
 package com.ibkr.trading.ui.panel;
 
+import com.ibkr.trading.config.AppConfig;
 import com.ibkr.trading.domain.MultiStockStrategy;
 import com.ibkr.trading.domain.MultiStockStrategy.StockOrder;
 import com.ibkr.trading.service.OrderService;
@@ -322,12 +323,14 @@ public class MultiStockPanel extends JPanel {
         int successCount = 0;
         int failCount = 0;
         
+        String account = AppConfig.getInstance().getCurrentTradingAccount();
         for (StockOrder order : strategy.getOrders()) {
             orderService.placeMultiStockOrder(
                 order.getSymbol(),
                 order.getQuantity(),
                 order.getLimitPrice(),
-                order.isSell()
+                order.isSell(),
+                account
             ).thenAccept(success -> {
                 if (success) {
                     SwingUtilities.invokeLater(() -> 

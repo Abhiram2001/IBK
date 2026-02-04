@@ -12,6 +12,7 @@ public class AppConfig {
     private static final AppConfig INSTANCE = new AppConfig();
     private final Properties properties;
     private String currentTradingSymbol = "";
+    private String currentTradingAccount = "";
 
     private AppConfig() {
         properties = new Properties();
@@ -83,5 +84,18 @@ public class AppConfig {
 
     public boolean hasTradingSymbol() {
         return currentTradingSymbol != null && !currentTradingSymbol.isEmpty();
+    }
+    
+    // Trading account management - set by MainFrame
+    public void setCurrentTradingAccount(String account) {
+        this.currentTradingAccount = account != null ? account.trim() : "";
+    }
+    
+    public String getCurrentTradingAccount() {
+        return currentTradingAccount != null && !currentTradingAccount.isEmpty() ? currentTradingAccount : null;
+    }
+    
+    public boolean hasTradingAccount() {
+        return currentTradingAccount != null && !currentTradingAccount.isEmpty();
     }
 }

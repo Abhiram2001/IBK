@@ -339,8 +339,9 @@ public class StranglePanel extends JPanel {
         String symbol = getCurrentSymbol();
         updateStatus("Placing combo order with 2 legs...");
         
+        String account = AppConfig.getInstance().getCurrentTradingAccount();
         // Place as a single BAG order
-        orderService.placeComboOrder(symbol, legs, limitPrice, quantity, "SELL",
+        orderService.placeComboOrder(symbol, legs, limitPrice, quantity, "SELL", account,
             status -> SwingUtilities.invokeLater(() -> {
                 updateStatus(status);
                 if (status.contains("Order Status: Submitted") || 
