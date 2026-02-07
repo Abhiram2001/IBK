@@ -189,7 +189,7 @@ public class StranglePanel extends JPanel {
 
     private void populateDefaults() {
         LocalDate today = LocalDate.now();
-        expiryChooser.setDate(java.sql.Date.valueOf(today.plusDays(7)));
+        expiryChooser.setDate(java.sql.Date.valueOf(today.plusDays(8)));
         quantityField.setText("1");
         callOffsetField.setText("5");
         putOffsetField.setText("5");
