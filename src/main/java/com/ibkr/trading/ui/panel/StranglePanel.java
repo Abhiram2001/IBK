@@ -1,5 +1,6 @@
 package com.ibkr.trading.ui.panel;
 
+import apidemo.stategies.CalendarSpreadStrategyPanel;
 import com.ibkr.trading.ui.util.HtmlButton;
 import com.ibkr.trading.ui.util.UpperField;
 import com.ibkr.trading.ui.util.VerticalPanel;
@@ -157,7 +158,7 @@ public class StranglePanel extends JPanel {
                 updateStatus("Fetching " + symbol + " price...");
                 marketDataService.getStockPrice(symbol)
                     .thenAccept(price -> SwingUtilities.invokeLater(() -> {
-                        spotPriceField.setText(String.format("%.2f", price));
+                        spotPriceField.setText(String.format("%.2f", customRound(price)));
                         populateDefaults();
                         updateStatus("Price fetched for " + symbol + ": $" + String.format("%.2f", price));
                     }))
@@ -169,6 +170,10 @@ public class StranglePanel extends JPanel {
             }
         };
     }
+
+  public double customRound(double value) {
+    return CalendarSpreadStrategyPanel.customRound(value);
+  }
 
     private HtmlButton createValidateButton() {
         return new HtmlButton("Validate Contracts") {
