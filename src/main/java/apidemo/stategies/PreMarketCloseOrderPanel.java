@@ -12,8 +12,8 @@ import com.toedter.calendar.JTextFieldDateEditor;
 
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
+import javax.swing.table.*;
+import javax.swing.border.LineBorder;
 import java.awt.*;
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -21,6 +21,8 @@ import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.PriceAlertListener {
     
@@ -31,8 +33,25 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.Pri
     private JLabel statusLabel;
     
     private static final String[] COLUMN_NAMES = {
-        "Trade ID", "Account", "Symbols", "Expiry", "Action", "Strike", "QTY", "Target $", "Alert $", "Active", "Status"
+        "Select", "Trade ID", "Account", "Symbols", "Expiry", "Action", "Strike", "QTY", "Target $", "Alert $", "Market $", "Status"
     };
+    
+    private static final int COL_SELECT = 0;
+    private static final int COL_TRADE_ID = 1;
+    private static final int COL_ACCOUNT = 2;
+    private static final int COL_SYMBOLS = 3;
+    private static final int COL_EXPIRY = 4;
+    private static final int COL_ACTION = 5;
+    private static final int COL_STRIKE = 6;
+    private static final int COL_QTY = 7;
+    private static final int COL_TARGET = 8;
+    private static final int COL_ALERT = 9;
+    private static final int COL_MARKET = 10;
+    private static final int COL_STATUS = 11;
+    
+    private Timer marketPriceUpdateTimer;
+    private boolean[] selectedTrades;
+    private Map<String, ApiController.ITopMktDataHandler> marketDataHandlers = new HashMap<>();
     
     private List<TradeOrder> tradeOrders = new ArrayList<>();
     
@@ -44,12 +63,15 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.Pri
         setLayout(new BorderLayout(10, 10));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         
+        // Initialize market price update timer (updates every 2 seconds)
+        marketPriceUpdateTimer = new Timer(2000, e -> updateMarketPrices());
+        
         JPanel topPanel = createTopPanel();
         JPanel configPanel = createConfigPanel();
         JPanel buttonPanel = createButtonPanel();
         
         statusLabel = new JLabel("Ready - Import Excel file to load your trades");
-        statusLabel.setForeground(Color.BLUE);
+        statusLabel.setForeground(new Color(33, 150, 243));
         statusLabel.setFont(new Font("Arial", Font.BOLD, 12));
         
         JPanel mainPanel = new JPanel(new BorderLayout(5, 5));
@@ -87,106 +109,295 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.Pri
     
     private JPanel createConfigPanel() {
         JPanel panel = new JPanel(new BorderLayout(5, 5));
-        panel.setBorder(BorderFactory.createTitledBorder("Trade Order Monitoring"));
+        panel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(new Color(63, 81, 181), 2), 
+            "Trade Order Monitoring", 0, 0, new Font("Arial", Font.BOLD, 14), new Color(63, 81, 181)));
         
         tableModel = new DefaultTableModel(COLUMN_NAMES, 0) {
             @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                switch (columnIndex) {
+                    case COL_SELECT: return Boolean.class;
+                    case COL_TARGET: case COL_ALERT: case COL_MARKET: return Double.class;
+                    default: return String.class;
+                }
+            }
+            
+            @Override
             public boolean isCellEditable(int row, int column) {
-                return false;
+                return column == COL_SELECT || column == COL_TARGET || column == COL_ALERT;
             }
         };
         
-        configTable = new JTable(tableModel);
-        configTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        configTable.setRowHeight(25);
+        configTable = new JTable(tableModel) {
+            @Override
+            public TableCellRenderer getCellRenderer(int row, int column) {
+                if (column == COL_SELECT) {
+                    return new BooleanTableCellRenderer();
+                } else if (column == COL_TARGET || column == COL_ALERT) {
+                    return new EditableNumberRenderer();
+                } else if (column == COL_MARKET) {
+                    return new MarketPriceRenderer();
+                } else if (column == COL_STATUS) {
+                    return new StatusCellRenderer();
+                } else {
+                    return new EnhancedCellRenderer();
+                }
+            }
+            
+            @Override
+            public TableCellEditor getCellEditor(int row, int column) {
+                if (column == COL_TARGET || column == COL_ALERT) {
+                    return new NumberCellEditor();
+                }
+                return super.getCellEditor(row, column);
+            }
+        };
         
-        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
-        centerRenderer.setHorizontalAlignment(JLabel.CENTER);
-        for (int i = 0; i < configTable.getColumnCount(); i++) {
-            configTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
-        }
+        configTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        configTable.setRowHeight(30);
+        configTable.setGridColor(new Color(224, 224, 224));
+        configTable.setShowGrid(true);
+        configTable.getTableHeader().setFont(new Font("Arial", Font.BOLD, 12));
+        configTable.getTableHeader().setBackground(new Color(245, 245, 245));
+        configTable.getTableHeader().setForeground(new Color(33, 33, 33));
         
-        configTable.getColumnModel().getColumn(0).setPreferredWidth(80);  // Trade ID
-        configTable.getColumnModel().getColumn(1).setPreferredWidth(80);  // Account
-        configTable.getColumnModel().getColumn(2).setPreferredWidth(150); // Symbols
-        configTable.getColumnModel().getColumn(3).setPreferredWidth(90);  // Expiry
-        configTable.getColumnModel().getColumn(4).setPreferredWidth(80);  // Action
-        configTable.getColumnModel().getColumn(5).setPreferredWidth(80);  // Strike
-        configTable.getColumnModel().getColumn(6).setPreferredWidth(50);  // QTY
-        configTable.getColumnModel().getColumn(7).setPreferredWidth(70);  // Target $
-        configTable.getColumnModel().getColumn(8).setPreferredWidth(70);  // Alert $
-        configTable.getColumnModel().getColumn(9).setPreferredWidth(60);  // Active
-        configTable.getColumnModel().getColumn(10).setPreferredWidth(120); // Status
+        // Set column widths for simplified 12-column structure
+        configTable.getColumnModel().getColumn(COL_SELECT).setPreferredWidth(50);     // Select
+        configTable.getColumnModel().getColumn(COL_TRADE_ID).setPreferredWidth(70);   // Trade ID
+        configTable.getColumnModel().getColumn(COL_ACCOUNT).setPreferredWidth(80);    // Account
+        configTable.getColumnModel().getColumn(COL_SYMBOLS).setPreferredWidth(120);   // Symbols
+        configTable.getColumnModel().getColumn(COL_EXPIRY).setPreferredWidth(80);     // Expiry
+        configTable.getColumnModel().getColumn(COL_ACTION).setPreferredWidth(80);     // Action
+        configTable.getColumnModel().getColumn(COL_STRIKE).setPreferredWidth(70);     // Strike
+        configTable.getColumnModel().getColumn(COL_QTY).setPreferredWidth(50);        // QTY
+        configTable.getColumnModel().getColumn(COL_TARGET).setPreferredWidth(70);     // Target $
+        configTable.getColumnModel().getColumn(COL_ALERT).setPreferredWidth(70);      // Alert $
+        configTable.getColumnModel().getColumn(COL_MARKET).setPreferredWidth(70);     // Market $
+        configTable.getColumnModel().getColumn(COL_STATUS).setPreferredWidth(140);    // Status (wider for detailed states)
         
         JScrollPane scrollPane = new JScrollPane(configTable);
-        scrollPane.setPreferredSize(new Dimension(900, 250));
+        scrollPane.setPreferredSize(new Dimension(1100, 300));
+        scrollPane.getViewport().setBackground(Color.WHITE);
         
         panel.add(scrollPane, BorderLayout.CENTER);
         
         return panel;
     }
     
+    // Custom cell renderers for enhanced UI
+    private class EnhancedCellRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, 
+                                                     boolean hasFocus, int row, int column) {
+            Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setHorizontalAlignment(SwingConstants.CENTER);
+            
+            if (!isSelected) {
+                if (row % 2 == 0) {
+                    c.setBackground(new Color(248, 249, 250));
+                } else {
+                    c.setBackground(Color.WHITE);
+                }
+            }
+            return c;
+        }
+    }
+    
+    private class EditableNumberRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, 
+                                                     boolean hasFocus, int row, int column) {
+            Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setHorizontalAlignment(SwingConstants.CENTER);
+            
+            if (!isSelected) {
+                c.setBackground(new Color(232, 245, 233)); // Light green for editable
+                setBorder(new LineBorder(new Color(76, 175, 80), 1));
+            }
+            
+            if (value instanceof Double) {
+                setText(String.format("%.2f", (Double) value));
+            }
+            return c;
+        }
+    }
+    
+    private class MarketPriceRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, 
+                                                     boolean hasFocus, int row, int column) {
+            Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setHorizontalAlignment(SwingConstants.CENTER);
+            
+            if (!isSelected) {
+                c.setBackground(new Color(227, 242, 253)); // Light blue for market price
+            }
+            
+            if (value instanceof Double && ((Double) value) > 0) {
+                setText(String.format("%.2f", (Double) value));
+                setForeground(new Color(33, 150, 243));
+                setFont(getFont().deriveFont(Font.BOLD));
+            } else {
+                setText("--");
+                setForeground(Color.GRAY);
+            }
+            return c;
+        }
+    }
+    
+    private class StatusCellRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, 
+                                                     boolean hasFocus, int row, int column) {
+            Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            setHorizontalAlignment(SwingConstants.CENTER);
+            
+            String status = (String) value;
+            
+            if (!isSelected) {
+                // Color code status for easy identification
+                if (status != null) {
+                    if (status.contains("Monitoring")) {
+                        c.setBackground(new Color(232, 245, 233)); // Light green
+                        setForeground(new Color(46, 125, 50));
+                        setFont(getFont().deriveFont(Font.BOLD));
+                    } else if (status.contains("ALERT")) {
+                        c.setBackground(new Color(255, 243, 224)); // Light orange
+                        setForeground(new Color(255, 111, 0));
+                        setFont(getFont().deriveFont(Font.BOLD));
+                    } else if (status.contains("Placed")) {
+                        c.setBackground(new Color(227, 242, 253)); // Light blue
+                        setForeground(new Color(33, 150, 243));
+                        setFont(getFont().deriveFont(Font.BOLD));
+                    } else if (status.contains("Error")) {
+                        c.setBackground(new Color(255, 235, 238)); // Light red
+                        setForeground(new Color(211, 47, 47));
+                        setFont(getFont().deriveFont(Font.BOLD));
+                    } else if (status.equals("Ready")) {
+                        c.setBackground(new Color(248, 249, 250)); // Light gray
+                        setForeground(new Color(97, 97, 97));
+                    } else {
+                        c.setBackground(row % 2 == 0 ? new Color(248, 249, 250) : Color.WHITE);
+                        setForeground(Color.BLACK);
+                    }
+                } else {
+                    c.setBackground(row % 2 == 0 ? new Color(248, 249, 250) : Color.WHITE);
+                }
+            }
+            return c;
+        }
+    }
+    
+    private class BooleanTableCellRenderer extends JCheckBox implements TableCellRenderer {
+        public BooleanTableCellRenderer() {
+            setHorizontalAlignment(JLabel.CENTER);
+        }
+        
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, 
+                                                     boolean hasFocus, int row, int column) {
+            if (isSelected) {
+                setForeground(table.getSelectionForeground());
+                setBackground(table.getSelectionBackground());
+            } else {
+                setForeground(table.getForeground());
+                if (row % 2 == 0) {
+                    setBackground(new Color(248, 249, 250));
+                } else {
+                    setBackground(Color.WHITE);
+                }
+            }
+            setSelected((value != null && ((Boolean) value).booleanValue()));
+            return this;
+        }
+    }
+    
+    private class NumberCellEditor extends DefaultCellEditor {
+        public NumberCellEditor() {
+            super(new JTextField());
+            ((JTextField) getComponent()).setHorizontalAlignment(SwingConstants.CENTER);
+        }
+        
+        @Override
+        public boolean stopCellEditing() {
+            String s = (String) super.getCellEditorValue();
+            try {
+                Double.parseDouble(s);
+            } catch (NumberFormatException e) {
+                ((JComponent) getComponent()).setBorder(new LineBorder(Color.red));
+                return false;
+            }
+            return super.stopCellEditing();
+        }
+        
+        @Override
+        public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
+            Component c = super.getTableCellEditorComponent(table, value, isSelected, row, column);
+            ((JComponent) c).setBorder(new LineBorder(new Color(76, 175, 80), 2));
+            return c;
+        }
+    }
+    
     private JPanel createButtonPanel() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER, 15, 10));
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
         
-        HtmlButton importButton = new HtmlButton("Import from Excel") {
-            @Override
-            protected void actionPerformed() {
-                importFromExcel();
-            }
-        };
-        importButton.setBackground(new Color(255, 152, 0));
-        importButton.setForeground(Color.WHITE);
-        importButton.setFont(new Font("Arial", Font.BOLD, 14));
-        importButton.setPreferredSize(new Dimension(200, 35));
+        // Top row - Main actions
+        JPanel topRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
         
-        HtmlButton toggleActiveButton = new HtmlButton("Toggle Active") {
-            @Override
-            protected void actionPerformed() {
-                toggleSelectedTradeActive();
-            }
-        };
-        toggleActiveButton.setBackground(new Color(156, 39, 176));
-        toggleActiveButton.setForeground(Color.WHITE);
-        toggleActiveButton.setFont(new Font("Arial", Font.BOLD, 14));
-        toggleActiveButton.setPreferredSize(new Dimension(150, 35));
+        JButton importButton = createStyledButton("📁 Import from Excel", new Color(255, 152, 0), e -> importFromExcel());
+        JButton selectAllButton = createStyledButton("☑ Select All", new Color(96, 125, 139), e -> selectAllTrades());
+        JButton deselectAllButton = createStyledButton("☐ Deselect All", new Color(158, 158, 158), e -> deselectAllTrades());
         
-        HtmlButton startAllButton = new HtmlButton("Start Monitoring All") {
-            @Override
-            protected void actionPerformed() {
-                startMonitoringAll();
-            }
-        };
-        startAllButton.setBackground(new Color(76, 175, 80));
-        startAllButton.setForeground(Color.WHITE);
-        startAllButton.setFont(new Font("Arial", Font.BOLD, 14));
-        startAllButton.setPreferredSize(new Dimension(200, 35));
+        topRow.add(importButton);
+        topRow.add(selectAllButton);
+        topRow.add(deselectAllButton);
         
-        HtmlButton stopAllButton = new HtmlButton("Stop All Monitoring") {
-            @Override
-            protected void actionPerformed() {
-                stopAllMonitoring();
-            }
-        };
-        stopAllButton.setBackground(new Color(244, 67, 54));
-        stopAllButton.setForeground(Color.WHITE);
-        stopAllButton.setFont(new Font("Arial", Font.BOLD, 14));
-        stopAllButton.setPreferredSize(new Dimension(200, 35));
+        // Bottom row - Action buttons
+        JPanel bottomRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
         
-        HtmlButton removeButton = new HtmlButton("Remove Selected") {
-            @Override
-            protected void actionPerformed() {
-                removeSelectedTrade();
-            }
-        };
+        JButton startMonitoringButton = createStyledButton("▶ Start Monitoring Selected", new Color(76, 175, 80), e -> startMonitoringSelected());
+        JButton stopMonitoringButton = createStyledButton("⏹ Stop Monitoring Selected", new Color(244, 67, 54), e -> stopMonitoringSelected());
+        JButton placeOrderButton = createStyledButton("💼 Place Order Selected", new Color(63, 81, 181), e -> placeOrderSelected());
+        JButton removeSelectedButton = createStyledButton("🗑 Remove Selected", new Color(233, 30, 99), e -> removeSelectedTrades());
         
-        panel.add(importButton);
-        panel.add(toggleActiveButton);
-        panel.add(startAllButton);
-        panel.add(stopAllButton);
-        panel.add(removeButton);
+        bottomRow.add(startMonitoringButton);
+        bottomRow.add(stopMonitoringButton);
+        bottomRow.add(placeOrderButton);
+        bottomRow.add(removeSelectedButton);
+        
+        panel.add(topRow);
+        panel.add(bottomRow);
         
         return panel;
+    }
+    
+    private JButton createStyledButton(String text, Color backgroundColor, java.awt.event.ActionListener action) {
+        JButton button = new JButton(text);
+        button.setBackground(backgroundColor);
+        button.setForeground(Color.WHITE);
+        button.setFont(new Font("Arial", Font.BOLD, 12));
+        button.setPreferredSize(new Dimension(180, 35));
+        button.setFocusPainted(false);
+        button.setBorder(BorderFactory.createRaisedBevelBorder());
+        button.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        
+        // Enhanced styling for better visibility
+        button.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent evt) {
+                button.setBackground(backgroundColor.darker());
+            }
+            
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent evt) {
+                button.setBackground(backgroundColor);
+            }
+        });
+        
+        button.addActionListener(action);
+        return button;
     }
     
     private void importFromExcel() {
@@ -255,8 +466,18 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.Pri
                         (int) importResult.trades.stream().filter(TradeOrder::isComboOrder).count()));
                     statusLabel.setForeground(new Color(0, 128, 0));
                     
+                    // Start fetching market prices for all imported trades
+                    if (!tradeOrders.isEmpty()) {
+                        // Start the market price update timer
+                        if (!marketPriceUpdateTimer.isRunning()) {
+                            marketPriceUpdateTimer.start();
+                        }
+                        // Immediately fetch market prices
+                        updateMarketPrices();
+                    }
+                    
                     JOptionPane.showMessageDialog(PreMarketCloseOrderPanel.this,
-                        String.format("Successfully imported %d trades!\n\nCombo orders: %d\nSingle orders: %d\n\nYou can now toggle Active/Inactive and start monitoring.",
+                        String.format("Successfully imported %d trades!\n\nCombo orders: %d\nSingle orders: %d\n\nMarket prices will update automatically.",
                             importResult.trades.size(),
                             (int) importResult.trades.stream().filter(TradeOrder::isComboOrder).count(),
                             (int) importResult.trades.stream().filter(t -> !t.isComboOrder()).count()),
@@ -274,40 +495,45 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.Pri
     }
     
     private void addTradeToTable(TradeOrder trade) {
+        // Initialize selectedTrades array if needed
+        if (selectedTrades == null || selectedTrades.length < tradeOrders.size()) {
+            selectedTrades = new boolean[tradeOrders.size() + 10]; // Add some buffer
+        }
+        
         tableModel.addRow(new Object[]{
-            trade.getTradeId(),
-            trade.getAccount(),
-            trade.getDisplaySymbols(),
-            formatExpiryDisplay(trade.getDisplayExpiry()),
-            trade.getDisplayAction(),
-            getDisplayStrike(trade),
-            trade.getTotalQuantity(),
-            String.format("$%.2f", trade.getTargetPrice()),
-            String.format("$%.2f", trade.getAlertThreshold()),
-            trade.isActive() ? "✓" : "✗",
-            getStatusDisplay(trade)
+            Boolean.FALSE,                                     // COL_SELECT - checkbox
+            trade.getTradeId(),                               // COL_TRADE_ID
+            trade.getAccount(),                               // COL_ACCOUNT
+            trade.getDisplaySymbols(),                        // COL_SYMBOLS
+            formatExpiryDisplay(trade.getDisplayExpiry()),    // COL_EXPIRY
+            trade.getDisplayAction(),                         // COL_ACTION
+            getDisplayStrike(trade),                          // COL_STRIKE
+            trade.getTotalQuantity(),                         // COL_QTY
+            trade.getTargetPrice(),                           // COL_TARGET (Double for editing)
+            trade.getAlertThreshold(),                        // COL_ALERT (Double for editing)
+            0.0,                                             // COL_MARKET (market price)
+            getEnhancedStatusDisplay(trade)                   // COL_STATUS (enhanced with monitoring state)
         });
     }
     
     private void updateTradeInTable(int rowIndex, TradeOrder trade) {
         if (rowIndex >= 0 && rowIndex < tableModel.getRowCount()) {
-            tableModel.setValueAt(trade.getTradeId(), rowIndex, 0);
-            tableModel.setValueAt(trade.getAccount(), rowIndex, 1);
-            tableModel.setValueAt(trade.getDisplaySymbols(), rowIndex, 2);
-            tableModel.setValueAt(formatExpiryDisplay(trade.getDisplayExpiry()), rowIndex, 3);
-            tableModel.setValueAt(trade.getDisplayAction(), rowIndex, 4);
-            tableModel.setValueAt(getDisplayStrike(trade), rowIndex, 5);
-            tableModel.setValueAt(String.valueOf(trade.getTotalQuantity()), rowIndex, 6);
-            tableModel.setValueAt(String.format("$%.2f", trade.getTargetPrice()), rowIndex, 7);
-            tableModel.setValueAt(String.format("$%.2f", trade.getAlertThreshold()), rowIndex, 8);
-            tableModel.setValueAt(trade.isActive() ? "✓" : "✗", rowIndex, 9);
-            tableModel.setValueAt(getStatusDisplay(trade), rowIndex, 10);
+            tableModel.setValueAt(trade.getTradeId(), rowIndex, COL_TRADE_ID);
+            tableModel.setValueAt(trade.getAccount(), rowIndex, COL_ACCOUNT);
+            tableModel.setValueAt(trade.getDisplaySymbols(), rowIndex, COL_SYMBOLS);
+            tableModel.setValueAt(formatExpiryDisplay(trade.getDisplayExpiry()), rowIndex, COL_EXPIRY);
+            tableModel.setValueAt(trade.getDisplayAction(), rowIndex, COL_ACTION);
+            tableModel.setValueAt(getDisplayStrike(trade), rowIndex, COL_STRIKE);
+            tableModel.setValueAt(trade.getTotalQuantity(), rowIndex, COL_QTY);
+            tableModel.setValueAt(trade.getTargetPrice(), rowIndex, COL_TARGET);
+            tableModel.setValueAt(trade.getAlertThreshold(), rowIndex, COL_ALERT);
+            tableModel.setValueAt(getEnhancedStatusDisplay(trade), rowIndex, COL_STATUS);
         }
     }
     
     private void updateTradeStatusInTable(int rowIndex, String status) {
         if (rowIndex >= 0 && rowIndex < tableModel.getRowCount()) {
-            tableModel.setValueAt(status, rowIndex, 10);
+            tableModel.setValueAt(status, rowIndex, COL_STATUS);
         }
     }
     
@@ -320,19 +546,24 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.Pri
         }
     }
     
-    private String getStatusDisplay(TradeOrder trade) {
+    private String getEnhancedStatusDisplay(TradeOrder trade) {
         if (!trade.isActive()) {
             return "Inactive";
         }
         switch (trade.getStatus()) {
             case READY: return "Ready";
-            case MONITORING: return "Monitoring...";
-            case ALERTED: return "⚠ ALERT - Placing Order";
-            case PLACED: return "Order Placed";
-            case ERROR: return "Error: " + (trade.getErrorMessage() != null ? trade.getErrorMessage() : "Unknown");
+            case MONITORING: return "🟢 Monitoring...";
+            case ALERTED: return "⚠️ ALERT - Placing Order";
+            case PLACED: return "✅ Order Placed";
+            case ERROR: return "❌ Error: " + (trade.getErrorMessage() != null ? trade.getErrorMessage() : "Unknown");
             case INACTIVE: return "Inactive";
             default: return trade.getStatus().toString();
         }
+    }
+    
+    // Legacy method for compatibility
+    private String getStatusDisplay(TradeOrder trade) {
+        return getEnhancedStatusDisplay(trade);
     }
     
     private String formatExpiryDisplay(String expiry) {
@@ -373,9 +604,349 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.Pri
         updateTradeInTable(selectedRow, trade);
         
         statusLabel.setText("Trade " + trade.getTradeId() + " is now " + (trade.isActive() ? "Active" : "Inactive"));
-        statusLabel.setForeground(Color.BLUE);
     }
     
+    // New enhanced button action methods
+    private void selectAllTrades() {
+        for (int i = 0; i < tableModel.getRowCount(); i++) {
+            tableModel.setValueAt(Boolean.TRUE, i, COL_SELECT);
+        }
+        statusLabel.setText("All trades selected");
+        statusLabel.setForeground(new Color(33, 150, 243));
+    }
+    
+    private void deselectAllTrades() {
+        for (int i = 0; i < tableModel.getRowCount(); i++) {
+            tableModel.setValueAt(Boolean.FALSE, i, COL_SELECT);
+        }
+        statusLabel.setText("All trades deselected");
+        statusLabel.setForeground(new Color(33, 150, 243));
+    }
+    
+    private void startMonitoringSelected() {
+        List<Integer> selectedRows = getSelectedRows();
+        System.out.println("DEBUG: Selected rows count: " + selectedRows.size());
+        
+        if (selectedRows.isEmpty()) {
+            statusLabel.setText("No trades selected. Use checkboxes to select trades for monitoring");
+            statusLabel.setForeground(Color.ORANGE);
+            return;
+        }
+        
+        int started = 0;
+        for (int row : selectedRows) {
+            TradeOrder trade = tradeOrders.get(row);
+            System.out.println("DEBUG: Trade " + trade.getTradeId() + " - isActive: " + trade.isActive() + ", status: " + trade.getStatus());
+            
+            if (trade.isActive() && trade.getStatus() == TradeOrder.OrderStatus.READY) {
+                System.out.println("DEBUG: Starting monitoring for trade " + trade.getTradeId());
+                startMonitoringTrade(trade, row);
+                started++;
+            } else {
+                System.out.println("DEBUG: Skipping trade " + trade.getTradeId() + " - not ready to monitor");
+            }
+        }
+        
+        if (started > 0) {
+            statusLabel.setText(String.format("Started monitoring %d selected trades", started));
+            statusLabel.setForeground(new Color(76, 175, 80));
+            // Start market price updates when monitoring begins
+            if (!marketPriceUpdateTimer.isRunning()) {
+                marketPriceUpdateTimer.start();
+            }
+        } else {
+            statusLabel.setText("No active trades found in selection to start monitoring");
+            statusLabel.setForeground(Color.ORANGE);
+        }
+    }
+    
+    private void stopMonitoringSelected() {
+        List<Integer> selectedRows = getSelectedRows();
+        if (selectedRows.isEmpty()) {
+            statusLabel.setText("No trades selected. Use checkboxes to select trades");
+            statusLabel.setForeground(Color.ORANGE);
+            return;
+        }
+        
+        int stopped = 0;
+        for (int row : selectedRows) {
+            TradeOrder trade = tradeOrders.get(row);
+            if (trade.getStatus() == TradeOrder.OrderStatus.MONITORING && trade.getMonitoringId() != null) {
+                priceMonitor.stopMonitoring(trade.getMonitoringId());
+                trade.setStatus(TradeOrder.OrderStatus.READY);
+                trade.setMonitoringId(null);
+                updateTradeStatusInTable(row, getEnhancedStatusDisplay(trade));
+                stopped++;
+            }
+        }
+        
+        statusLabel.setText(String.format("Stopped monitoring %d selected trades", stopped));
+        statusLabel.setForeground(new Color(244, 67, 54));
+        
+        // Stop market price updates if no trades are being monitored
+        boolean anyMonitoring = tradeOrders.stream().anyMatch(t -> t.getStatus() == TradeOrder.OrderStatus.MONITORING);
+        if (!anyMonitoring && marketPriceUpdateTimer.isRunning()) {
+            marketPriceUpdateTimer.stop();
+        }
+    }
+    
+    private void placeOrderSelected() {
+        List<Integer> selectedRows = getSelectedRows();
+        if (selectedRows.isEmpty()) {
+            statusLabel.setText("No trades selected. Use checkboxes to select trades for order placement");
+            statusLabel.setForeground(Color.ORANGE);
+            return;
+        }
+        
+        // Confirm manual order placement
+        int confirm = JOptionPane.showConfirmDialog(this,
+            String.format("Place orders for %d selected trades immediately using their Target Price?\\n\\n" +
+                "This bypasses monitoring and places orders right away at the specified Target Price.\\n" +
+                "Orders will be placed as limit orders.", selectedRows.size()),
+            "Manual Order Placement", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        
+        if (confirm != JOptionPane.YES_OPTION) {
+            return;
+        }
+        
+        int placed = 0;
+        for (int row : selectedRows) {
+            TradeOrder trade = tradeOrders.get(row);
+            if (trade.isActive()) {
+                // Get updated target/alert prices from table (in case user edited them)
+                updateTradeFromTable(row, trade);
+                
+                // Place order immediately without monitoring
+                placeOrderManually(trade, row);
+                placed++;
+            }
+        }
+        
+        statusLabel.setText(String.format("Placing orders for %d selected trades", placed));
+        statusLabel.setForeground(new Color(63, 81, 181));
+    }
+    
+    private void removeSelectedTrades() {
+        List<Integer> selectedRows = getSelectedRows();
+        if (selectedRows.isEmpty()) {
+            statusLabel.setText("No trades selected. Use checkboxes to select trades for removal");
+            statusLabel.setForeground(Color.ORANGE);
+            return;
+        }
+        
+        int confirm = JOptionPane.showConfirmDialog(this,
+            String.format("Remove %d selected trades?\\n\\nThis will stop monitoring and delete them from the list.", 
+                selectedRows.size()),
+            "Remove Trades", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        
+        if (confirm != JOptionPane.YES_OPTION) {
+            return;
+        }
+        
+        // Sort in descending order to avoid index shifting issues
+        selectedRows.sort((a, b) -> b.compareTo(a));
+        
+        int removed = 0;
+        for (int row : selectedRows) {
+            TradeOrder trade = tradeOrders.get(row);
+            
+            // Stop monitoring if active
+            if (trade.getStatus() == TradeOrder.OrderStatus.MONITORING && trade.getMonitoringId() != null) {
+                priceMonitor.stopMonitoring(trade.getMonitoringId());
+            }
+            
+            // Remove from list and table
+            tradeOrders.remove(row);
+            tableModel.removeRow(row);
+            removed++;
+        }
+        
+        statusLabel.setText(String.format("Removed %d trades", removed));
+        statusLabel.setForeground(new Color(233, 30, 99));
+    }
+    
+    private List<Integer> getSelectedRows() {
+        List<Integer> selectedRows = new ArrayList<>();
+        for (int i = 0; i < tableModel.getRowCount(); i++) {
+            Boolean selected = (Boolean) tableModel.getValueAt(i, COL_SELECT);
+            if (selected != null && selected.booleanValue()) {
+                selectedRows.add(i);
+            }
+        }
+        return selectedRows;
+    }
+    
+    private void updateTradeFromTable(int row, TradeOrder trade) {
+        // Update target and alert prices from table (in case user edited them inline)
+        // Handle String, Integer, or Double values
+        Object targetPriceObj = tableModel.getValueAt(row, COL_TARGET);
+        Object alertPriceObj = tableModel.getValueAt(row, COL_ALERT);
+        
+        if (targetPriceObj != null) {
+            double targetPrice = parsePrice(targetPriceObj);
+            if (targetPrice > 0) {
+                trade.setTargetPrice(targetPrice);
+            }
+        }
+        if (alertPriceObj != null) {
+            double alertPrice = parsePrice(alertPriceObj);
+            if (alertPrice > 0) {
+                trade.setAlertThreshold(alertPrice);
+            }
+        }
+        // Note: Active status is now managed through business logic, not UI toggle
+    }
+    
+    private double parsePrice(Object value) {
+        if (value == null) return 0.0;
+        
+        if (value instanceof Double) {
+            return ((Double) value).doubleValue();
+        } else if (value instanceof Integer) {
+            return ((Integer) value).doubleValue();
+        } else if (value instanceof String) {
+            try {
+                return Double.parseDouble((String) value);
+            } catch (NumberFormatException e) {
+                System.err.println("Error parsing price: " + value);
+                return 0.0;
+            }
+        } else if (value instanceof Number) {
+            return ((Number) value).doubleValue();
+        }
+        
+        return 0.0;
+    }
+    
+    private void placeOrderManually(TradeOrder trade, int rowIndex) {
+        // Similar to placeOrderInTWS but without monitoring logic
+        if (trade.isComboOrder()) {
+            placeComboOrder(trade, rowIndex);
+        } else {
+            placeSingleLegOrder(trade, rowIndex);
+        }
+        
+        trade.setStatus(TradeOrder.OrderStatus.PLACED);
+        updateTradeStatusInTable(rowIndex, "Placing Manual Order...");
+    }
+    
+    // Market price update functionality - fetch for ALL trades to show current market conditions
+    private void updateMarketPrices() {
+        for (int i = 0; i < tradeOrders.size(); i++) {
+            TradeOrder trade = tradeOrders.get(i);
+            // Fetch market price for all active trades regardless of monitoring status
+            if (trade.isActive()) {
+                TradeOrder.OrderLeg mainLeg = trade.getMainLeg();
+                if (mainLeg != null) {
+                    requestMarketPrice(trade, i);
+                }
+            }
+        }
+    }
+    
+    private void requestMarketPrice(TradeOrder trade, int rowIndex) {
+        TradeOrder.OrderLeg mainLeg = trade.getMainLeg();
+        if (mainLeg == null) return;
+        
+        String handlerKey = trade.getTradeId() + "_" + rowIndex;
+        
+        // Cancel existing market data subscription if present
+        if (marketDataHandlers.containsKey(handlerKey)) {
+            ApiController.ITopMktDataHandler existingHandler = marketDataHandlers.get(handlerKey);
+            m_parent.controller().cancelTopMktData(existingHandler);
+        }
+        
+        Contract contract = createContractFromLeg(mainLeg);
+        
+        // Create market data handler for this trade
+        ApiController.ITopMktDataHandler handler = new ApiController.ITopMktDataHandler() {
+            private double lastPrice = 0.0;
+            private double bidPrice = 0.0;
+            private double askPrice = 0.0;
+            
+            @Override
+            public void tickPrice(TickType tickType, double price, TickAttrib attribs) {
+                switch (tickType) {
+                    case LAST:
+                        lastPrice = price;
+                        break;
+                    case BID:
+                        bidPrice = price;
+                        break;
+                    case ASK:
+                        askPrice = price;
+                        break;
+                    default:
+                        return;
+                }
+                
+                // Use best available price: LAST > midpoint of BID/ASK > BID > ASK
+                double displayPrice = lastPrice > 0 ? lastPrice : 
+                                     (bidPrice > 0 && askPrice > 0) ? (bidPrice + askPrice) / 2 :
+                                     bidPrice > 0 ? bidPrice : askPrice;
+                
+                if (displayPrice > 0) {
+                    SwingUtilities.invokeLater(() -> {
+                        if (rowIndex < tableModel.getRowCount()) {
+                            tableModel.setValueAt(displayPrice, rowIndex, COL_MARKET);
+                            trade.setCurrentPrice(displayPrice);
+                        }
+                    });
+                }
+            }
+            
+            @Override
+            public void tickSize(TickType tickType, Decimal size) {}
+            
+            @Override
+            public void tickString(TickType tickType, String value) {}
+            
+            @Override
+            public void tickSnapshotEnd() {}
+            
+            @Override
+            public void marketDataType(int marketDataType) {}
+            
+            @Override
+            public void tickReqParams(int tickerId, double minTick, String bboExchange, int snapshotPermissions) {}
+        };
+        
+        // Store handler and request market data
+        marketDataHandlers.put(handlerKey, handler);
+        m_parent.controller().reqTopMktData(contract, "", false, false, handler);
+    }
+    
+    private void startMonitoringTrade(TradeOrder trade, int rowIndex) {
+        TradeOrder.OrderLeg mainLeg = trade.getMainLeg();
+        if (mainLeg == null) {
+            statusLabel.setText("Trade " + trade.getTradeId() + " has no main leg for monitoring");
+            statusLabel.setForeground(Color.RED);
+            return;
+        }
+        
+        // Get updated prices from table
+        updateTradeFromTable(rowIndex, trade);
+        
+        Contract contract = createContractFromLeg(mainLeg);
+        
+        String monitoringId = trade.getTradeId() + "_" + System.currentTimeMillis();
+        trade.setMonitoringId(monitoringId);
+        trade.setStatus(TradeOrder.OrderStatus.MONITORING);
+        
+        updateTradeStatusInTable(rowIndex, getEnhancedStatusDisplay(trade));
+        
+        // Start monitoring with contract details
+        m_parent.controller().reqContractDetails(contract, contractDetailsList -> {
+            if (!contractDetailsList.isEmpty()) {
+                Contract validatedContract = contractDetailsList.get(0).contract();
+                String actualMonitoringId = priceMonitor.startMonitoring(
+                    validatedContract, trade.getTargetPrice(), trade.getAlertThreshold(), mainLeg.action);
+                trade.setMonitoringId(actualMonitoringId);
+            }
+        });
+    }
+    
+    // Legacy methods updated to work with new structure
     private void startMonitoringAll() {
         if (tradeOrders.isEmpty()) {
             statusLabel.setText("No trades to monitor - please import Excel file first");
@@ -383,59 +954,36 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.Pri
             return;
         }
         
-        int started = 0;
-        for (int i = 0; i < tradeOrders.size(); i++) {
-            TradeOrder trade = tradeOrders.get(i);
-            if (trade.isActive() && trade.getStatus() == TradeOrder.OrderStatus.READY) {
-                startMonitoringTrade(trade, i);
-                started++;
-            }
-        }
-        
-        statusLabel.setText(String.format("Started monitoring %d active trades. Waiting for price alerts...", started));
-        statusLabel.setForeground(new Color(0, 128, 0));
+        // Select all trades first, then start monitoring selected
+        selectAllTrades();
+        startMonitoringSelected();
     }
     
-    private void startMonitoringTrade(TradeOrder trade, int rowIndex) {
-        trade.setStatus(TradeOrder.OrderStatus.MONITORING);
-        updateTradeStatusInTable(rowIndex, "Validating...");
-        
-        // For combo orders, we monitor the main leg
-        TradeOrder.OrderLeg mainLeg = trade.getMainLeg();
-        if (mainLeg == null) {
-            trade.setStatus(TradeOrder.OrderStatus.ERROR);
-            trade.setErrorMessage("No main leg found");
-            updateTradeStatusInTable(rowIndex, "Error: No main leg");
+    private void stopAllMonitoring() {
+        if (tradeOrders.isEmpty()) {
+            statusLabel.setText("No trades to stop");
+            statusLabel.setForeground(Color.ORANGE);
             return;
         }
         
-        Contract contract = createContractFromLeg(mainLeg);
-        
-        m_parent.controller().reqContractDetails(contract, list -> {
-            if (list.isEmpty() || list.size() > 1) {
-                SwingUtilities.invokeLater(() -> {
-                    trade.setStatus(TradeOrder.OrderStatus.ERROR);
-                    trade.setErrorMessage("Contract validation failed");
-                    updateTradeStatusInTable(rowIndex, "Contract Error");
-                    statusLabel.setText("Error: Contract validation failed for " + trade.getTradeId());
-                    statusLabel.setForeground(Color.RED);
-                });
+        // Select all and stop monitoring
+        selectAllTrades();
+        stopMonitoringSelected();
+    }
+    
+    private void removeSelectedTrade() {
+        // Legacy method - now uses checkbox-based selection
+        List<Integer> selectedRows = getSelectedRows();
+        if (selectedRows.isEmpty()) {
+            // If nothing selected via checkbox, use table row selection
+            int selectedRow = configTable.getSelectedRow();
+            if (selectedRow >= 0) {
+                tableModel.setValueAt(Boolean.TRUE, selectedRow, COL_SELECT);
+                removeSelectedTrades();
                 return;
             }
-            
-            Contract validatedContract = list.get(0).contract();
-            
-            SwingUtilities.invokeLater(() -> {
-                String monitorId = priceMonitor.startMonitoring(
-                    validatedContract, trade.getTargetPrice(), trade.getAlertThreshold(), 
-                    mainLeg.action);
-                
-                trade.setMonitoringId(monitorId);
-                trade.setStatus(TradeOrder.OrderStatus.MONITORING);
-                
-                updateTradeStatusInTable(rowIndex, "Monitoring...");
-            });
-        });
+        }
+        removeSelectedTrades();
     }
     
     private Contract createContractFromLeg(TradeOrder.OrderLeg leg) {
@@ -451,40 +999,7 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.Pri
         return contract;
     }
     
-    private void stopAllMonitoring() {
-        priceMonitor.stopAllMonitoring();
-        
-        for (int i = 0; i < tradeOrders.size(); i++) {
-            TradeOrder trade = tradeOrders.get(i);
-            if (trade.getStatus() == TradeOrder.OrderStatus.MONITORING) {
-                trade.setStatus(TradeOrder.OrderStatus.READY);
-            }
-            updateTradeStatusInTable(i, trade.isActive() ? "Ready" : "Inactive");
-        }
-        
-        statusLabel.setText("All monitoring stopped");
-        statusLabel.setForeground(Color.BLUE);
-    }
-    
-    private void removeSelectedTrade() {
-        int selectedRow = configTable.getSelectedRow();
-        if (selectedRow < 0) {
-            statusLabel.setText("Please select a trade to remove");
-            statusLabel.setForeground(Color.ORANGE);
-            return;
-        }
-        
-        TradeOrder trade = tradeOrders.get(selectedRow);
-        if (trade.getStatus() == TradeOrder.OrderStatus.MONITORING && trade.getMonitoringId() != null) {
-            priceMonitor.stopMonitoring(trade.getMonitoringId());
-        }
-        
-        tradeOrders.remove(selectedRow);
-        tableModel.removeRow(selectedRow);
-        
-        statusLabel.setText("Trade removed");
-        statusLabel.setForeground(Color.BLUE);
-    }
+    // Existing onPriceAlert and order placement methods continue below
     
     @Override
     public void onPriceAlert(PriceMonitor.MonitoredOrder order, double currentPrice, double distance) {
