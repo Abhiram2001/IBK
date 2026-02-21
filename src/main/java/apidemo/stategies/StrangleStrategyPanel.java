@@ -328,6 +328,12 @@ public class StrangleStrategyPanel extends JPanel {
         comboOrder.action("SELL");
         comboOrder.totalQuantity(Decimal.get(1));
         comboOrder.tif("GTC");
+        
+        // Set the selected account
+        String selectedAccount = m_parent.getSelectedAccount();
+        if (selectedAccount != null && !selectedAccount.isEmpty()) {
+            comboOrder.account(selectedAccount);
+        }
 
         // Place the combo order
         m_parent.controller().placeOrModifyOrder(comboContract, comboOrder,

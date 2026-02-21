@@ -178,6 +178,12 @@ public class MultiStockStrategyPanel extends JPanel {
             order.action(entry.isSell.isSelected() ? "SELL" : "BUY");
             order.totalQuantity(Decimal.get(Integer.parseInt(entry.quantity.getText())));
             order.tif("GTC");
+            
+            // Set the selected account
+            String selectedAccount = m_parent.getSelectedAccount();
+            if (selectedAccount != null && !selectedAccount.isEmpty()) {
+                order.account(selectedAccount);
+            }
 
             m_parent.controller().placeOrModifyOrder(contract, order, new ApiController.IOrderHandler() {
                 @Override
