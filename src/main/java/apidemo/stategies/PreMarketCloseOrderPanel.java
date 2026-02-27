@@ -9,6 +9,7 @@ import com.toedter.calendar.JDateChooser;
 import com.toedter.calendar.JCalendar;
 import com.toedter.calendar.JMonthChooser;
 import com.toedter.calendar.JTextFieldDateEditor;
+import org.apache.poi.util.StringUtil;
 
 import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -22,9 +23,11 @@ import java.util.Calendar;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -422,17 +425,21 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.Pri
         new SwingWorker<ExcelOrderImporter.ImportResult, Void>() {
             @Override
             protected ExcelOrderImporter.ImportResult doInBackground() {
-                List<String> availableAccounts = m_parent.getAccountList();
-                return ExcelOrderImporter.importFromExcel(selectedFile, availableAccounts);
+                return ExcelOrderImporter.importFromExcel(selectedFile);
             }
             
             @Override
             protected void done() {
                 try {
                     ExcelOrderImporter.ImportResult importResult = get();
+
+                    List<TradeOrder> trades = importResult.trades;
+                    List<String> errors = importResult.errors;
+                    List<String> availableAccounts = m_parent.getAccountList();
+                    validateAccounts(trades, availableAccounts, errors);
                     
-                    if (!importResult.errors.isEmpty()) {
-                        String errorMsg = "Import Failed:\n\n" + importResult.errors.stream()
+                    if (!errors.isEmpty()) {
+                        String errorMsg = "Import Failed:\n\n" + errors.stream()
                                 .map(error -> "• " + error)
                                 .collect(Collectors.joining("\n"));
                         JOptionPane.showMessageDialog(
@@ -504,6 +511,53 @@ public class PreMarketCloseOrderPanel extends JPanel implements PriceMonitor.Pri
             }
         }.execute();
     }
+
+    private static void validateAccounts(List<TradeOrder> trades, List<String> availableAccounts, List<String> errors) {
+        if (availableAccounts == null || availableAccounts.isEmpty()) {
+            errors.add("No accounts available from IB. Please ensure you are connected to IB TWS/Gateway.");
+            return;
+        }
+
+        Set<String> missingAccounts = new HashSet<>();
+        Set<String> invalidAccounts = new HashSet<>();
+
+        for (TradeOrder trade : trades) {
+            String account = trade.getAccount();
+            if (StringUtil.isBlank(account)) {
+                missingAccounts.add("Trade ID: " + trade.getTradeId());
+                continue;
+            }
+
+            account = account.strip();
+            if (!availableAccounts.contains(account)) {
+                invalidAccounts.add(account);
+            }
+        }
+
+        if (missingAccounts.isEmpty() && invalidAccounts.isEmpty()) {
+            return;
+        }
+
+        StringBuilder errorMsg = new StringBuilder("Account Validation Failed!\n\n");
+        if (!missingAccounts.isEmpty()) {
+            errorMsg.append("Missing account(s) in Excel file:\n")
+                    .append(missingAccounts.stream()
+                            .map(row -> "• " + row)
+                            .collect(Collectors.joining("\n")))
+                    .append("\n");
+        }
+
+        if (!invalidAccounts.isEmpty()) {
+            errorMsg.append("Invalid account(s) not found in IB:\n")
+                    .append(invalidAccounts.stream()
+                            .map(row -> "• " + row)
+                            .collect(Collectors.joining("\n")))
+                    .append("\n");
+        }
+
+        errors.add(errorMsg.toString());
+    }
+
     
     private void addTradeToTable(TradeOrder trade) {
         // Initialize selectedTrades array if needed
