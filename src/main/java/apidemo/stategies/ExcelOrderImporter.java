@@ -1,7 +1,6 @@
 package apidemo.stategies;
 
 import org.apache.poi.ss.usermodel.*;
-import org.apache.poi.util.StringUtil;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 
@@ -10,7 +9,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class ExcelOrderImporter {
     
@@ -377,5 +375,4 @@ public class ExcelOrderImporter {
         }
         return "";
     }
-
 }
