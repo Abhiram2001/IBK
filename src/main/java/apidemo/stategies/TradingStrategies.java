@@ -33,7 +33,6 @@ public class TradingStrategies implements IConnectionHandler {
     private final Logger m_outLogger = new Logger(m_outLog);
     private ApiController m_controller;
     private final List<String> m_acctList = new ArrayList<>();
-    private String m_selectedAccount = null;
     private final JFrame m_frame = new JFrame();
     private final ConnectionPanel m_connectionPanel;
     private final NewTabbedPanel m_tabbedPanel = new NewTabbedPanel(true);
@@ -108,12 +107,12 @@ public class TradingStrategies implements IConnectionHandler {
     }
 
     /**
-     * Gets the currently selected account.
+     * Gets the currently selected account from the connection panel dropdown.
      * 
      * @return the selected account identifier, or null if none selected
      */
     public String getSelectedAccount() {
-        return m_selectedAccount;
+        return m_connectionPanel.m_accountCombo.getSelectedItem();
     }
 
     /**
@@ -126,13 +125,15 @@ public class TradingStrategies implements IConnectionHandler {
     }
 
     /**
-     * Sets the selected account.
+     * Applies the selected account to an order, if one is selected.
      * 
-     * @param account the account identifier to select
+     * @param order the order to apply the account to
      */
-    public void setSelectedAccount(String account) {
-        m_selectedAccount = account;
-        show("Selected account: " + account);
+    public void applyAccountToOrder(com.ib.client.Order order) {
+        String account = getSelectedAccount();
+        if (account != null && !account.isEmpty()) {
+            order.account(account);
+        }
     }
 
     /**
@@ -216,11 +217,6 @@ public class TradingStrategies implements IConnectionHandler {
         
         // Update the connection panel dropdown with the account list
         m_connectionPanel.updateAccountList(list);
-        
-        // Auto-select first account if none selected
-        if (m_selectedAccount == null && !list.isEmpty()) {
-            setSelectedAccount(list.get(0));
-        }
     }
 
     /**
@@ -301,11 +297,11 @@ public class TradingStrategies implements IConnectionHandler {
                 }
             };
 
-            // Add action listener to account dropdown
+            // Log account selection changes
             m_accountCombo.addActionListener(e -> {
                 String selected = m_accountCombo.getSelectedItem();
                 if (selected != null) {
-                    setSelectedAccount(selected);
+                    TradingStrategies.this.show("Selected account: " + selected);
                 }
             });
 
