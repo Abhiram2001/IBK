@@ -51,7 +51,12 @@ public class PriceMonitor {
         }
         
         public boolean shouldAlert() {
-            return !alertTriggered && getDistanceToTarget() <= alertThreshold;
+            if (alertTriggered || currentPrice == 0.0 || alertThreshold == 0.0) return false;
+            if (alertThreshold > 0) {
+                return currentPrice >= alertThreshold;  // trigger at/above
+            } else {
+                return currentPrice <= Math.abs(alertThreshold);  // trigger at/below
+            }
         }
         
         @Override

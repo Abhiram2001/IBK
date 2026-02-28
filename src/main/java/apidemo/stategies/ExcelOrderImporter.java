@@ -13,16 +13,23 @@ import java.util.*;
 public class ExcelOrderImporter {
     
     public static class ImportResult {
-        public final List<TradeOrder> trades;
+        public final Map<String, List<TradeOrder>> sheetTrades;
+        public final List<String> skippedSheets;
         public final List<String> errors;
         public final List<String> warnings;
         public final boolean success;
         
-        public ImportResult(List<TradeOrder> trades, List<String> errors, List<String> warnings) {
-            this.trades = trades;
+        public ImportResult(Map<String, List<TradeOrder>> sheetTrades, List<String> skippedSheets,
+                           List<String> errors, List<String> warnings) {
+            this.sheetTrades = sheetTrades;
+            this.skippedSheets = skippedSheets;
             this.errors = errors;
             this.warnings = warnings;
-            this.success = !trades.isEmpty();
+            this.success = !sheetTrades.isEmpty();
+        }
+        
+        public int totalTradeCount() {
+            return sheetTrades.values().stream().mapToInt(List::size).sum();
         }
     }
     
@@ -35,9 +42,11 @@ public class ExcelOrderImporter {
         String optionType;
         String role;
         double strike;
+        int rate;
         int quantity;
         double target;
         double alert;
+        boolean active;
         int rowNumber;
         
         ExcelRow(int rowNumber) {
@@ -46,7 +55,8 @@ public class ExcelOrderImporter {
     }
     
     public static ImportResult importFromExcel(File file) {
-        List<TradeOrder> trades = new ArrayList<>();
+        Map<String, List<TradeOrder>> sheetTrades = new LinkedHashMap<>();
+        List<String> skippedSheets = new ArrayList<>();
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         
@@ -54,18 +64,30 @@ public class ExcelOrderImporter {
             Workbook workbook = createWorkbook(file, fis);
             if (workbook == null) {
                 errors.add("Invalid file format. Please use .xlsx or .xls files");
-                return new ImportResult(trades, errors, warnings);
+                return new ImportResult(sheetTrades, skippedSheets, errors, warnings);
             }
             
-            Sheet sheet = workbook.getSheetAt(0);
-            if (sheet.getPhysicalNumberOfRows() < 2) {
-                errors.add("Excel file is empty or has no data rows");
-                workbook.close();
-                return new ImportResult(trades, errors, warnings);
+            for (int s = 0; s < workbook.getNumberOfSheets(); s++) {
+                Sheet sheet = workbook.getSheetAt(s);
+                String sheetName = sheet.getSheetName().trim();
+                
+                if (workbook.isSheetHidden(s) || workbook.isSheetVeryHidden(s)) {
+                    skippedSheets.add(sheetName);
+                    continue;
+                }
+                
+                if (sheet.getPhysicalNumberOfRows() < 2) {
+                    warnings.add("Sheet '" + sheetName + "': Empty or no data rows, skipped");
+                    continue;
+                }
+                
+                Map<String, List<ExcelRow>> tradeGroups = parseExcelRows(sheet, sheetName, errors);
+                List<TradeOrder> trades = createTradeOrders(tradeGroups, sheetName, errors, warnings);
+                
+                if (!trades.isEmpty()) {
+                    sheetTrades.put(sheetName, trades);
+                }
             }
-            
-            Map<String, List<ExcelRow>> tradeGroups = parseExcelRows(sheet, errors);
-            trades.addAll(createTradeOrders(tradeGroups, errors, warnings));
             
             workbook.close();
             
@@ -73,7 +95,7 @@ public class ExcelOrderImporter {
             errors.add("Error reading Excel file: " + e.getMessage());
         }
         
-        return new ImportResult(trades, errors, warnings);
+        return new ImportResult(sheetTrades, skippedSheets, errors, warnings);
     }
     
     private static Workbook createWorkbook(File file, FileInputStream fis) throws IOException {
@@ -86,7 +108,7 @@ public class ExcelOrderImporter {
         return null;
     }
     
-    private static Map<String, List<ExcelRow>> parseExcelRows(Sheet sheet, List<String> errors) {
+    private static Map<String, List<ExcelRow>> parseExcelRows(Sheet sheet, String sheetName, List<String> errors) {
         Map<String, List<ExcelRow>> tradeGroups = new LinkedHashMap<>();
         
         for (int i = 1; i <= sheet.getLastRowNum(); i++) {
@@ -100,7 +122,7 @@ public class ExcelOrderImporter {
                 tradeGroups.computeIfAbsent(excelRow.tradeId, k -> new ArrayList<>()).add(excelRow);
                 
             } catch (Exception e) {
-                errors.add("Row " + (i + 1) + ": " + e.getMessage());
+                errors.add("[" + sheetName + "] Row " + (i + 1) + ": " + e.getMessage());
             }
         }
         
@@ -111,6 +133,15 @@ public class ExcelOrderImporter {
         ExcelRow excelRow = new ExcelRow(rowNumber);
         
         excelRow.tradeId = getCellValueAsString(row.getCell(0)).trim().toUpperCase();
+        
+        // Read Active column early — if inactive, skip parsing/validation
+        // (inactive rows only need tradeId for grouping so anyInactive check works)
+        String activeStr = getCellValueAsString(row.getCell(11)).trim().toUpperCase();
+        excelRow.active = activeStr.equals("Y") || activeStr.equals("YES");
+        if (!excelRow.active) {
+            return excelRow;
+        }
+        
         excelRow.account = getCellValueAsString(row.getCell(1)).trim();
         excelRow.symbol = getCellValueAsString(row.getCell(2)).trim().toUpperCase();
         excelRow.expiry = parseDateCell(row.getCell(3));
@@ -121,9 +152,10 @@ public class ExcelOrderImporter {
         
         excelRow.role = getCellValueAsString(row.getCell(5)).trim().toUpperCase();
         excelRow.strike = getCellValueAsDouble(row.getCell(6));
-        excelRow.quantity = (int) getCellValueAsDouble(row.getCell(7));
-        excelRow.target = getCellValueAsDouble(row.getCell(8));
-        excelRow.alert = getCellValueAsDouble(row.getCell(9));
+        excelRow.rate = (int) getCellValueAsDouble(row.getCell(7));
+        excelRow.quantity = (int) getCellValueAsDouble(row.getCell(8));
+        excelRow.target = getCellValueAsDouble(row.getCell(9));
+        excelRow.alert = getCellValueAsDouble(row.getCell(10));
         
         validateRow(excelRow);
         
@@ -141,8 +173,8 @@ public class ExcelOrderImporter {
             throw new Exception("Action must be in format 'CALL BUY', 'PUT SELL', 'BUY CALL', or 'SELL PUT'");
         }
         
-        String part1 = parts[0];
-        String part2 = parts[1];
+        String part1 = parts[0].toUpperCase();
+        String part2 = parts[1].toUpperCase();
         
         // Determine which part is the option type and which is the action
         if ((part1.equals("CALL") || part1.equals("PUT") || part1.equals("C") || part1.equals("P")) &&
@@ -191,8 +223,13 @@ public class ExcelOrderImporter {
             throw new Exception("Strike must be positive");
         }
         
-        if (row.quantity <= 0) {
-            throw new Exception("Quantity must be positive");
+        if (row.rate <= 0) {
+            throw new Exception("Rate must be positive");
+        }
+        
+        // Only validate QTY for MAIN role legs; child legs inherit QTY from main
+        if ("MAIN".equalsIgnoreCase(row.role) && row.quantity <= 0) {
+            throw new Exception("Quantity must be positive for Main role");
         }
         
         // Only validate target/alert for explicitly marked MAIN role
@@ -200,13 +237,12 @@ public class ExcelOrderImporter {
             if (row.target <= 0) {
                 throw new Exception("Target price must be positive for Main role");
             }
-            if (row.alert <= 0) {
-                throw new Exception("Alert threshold must be positive for Main role");
-            }
+            // Alert: positive = trigger above, negative = trigger below, 0 = no alert
         }
     }
     
-    private static List<TradeOrder> createTradeOrders(Map<String, List<ExcelRow>> tradeGroups, 
+    private static List<TradeOrder> createTradeOrders(Map<String, List<ExcelRow>> tradeGroups,
+                                                      String sheetName,
                                                       List<String> errors, List<String> warnings) {
         List<TradeOrder> trades = new ArrayList<>();
         
@@ -214,11 +250,17 @@ public class ExcelOrderImporter {
             String tradeId = entry.getKey();
             List<ExcelRow> rows = entry.getValue();
             
+            boolean anyInactive = rows.stream().anyMatch(r -> !r.active);
+            if (anyInactive) {
+                warnings.add("[" + sheetName + "] Trade " + tradeId + ": Skipped (inactive)");
+                continue;
+            }
+            
             try {
                 TradeOrder trade = createTradeOrder(tradeId, rows, warnings);
                 trades.add(trade);
             } catch (Exception e) {
-                errors.add("Trade " + tradeId + ": " + e.getMessage());
+                errors.add("[" + sheetName + "] Trade " + tradeId + ": " + e.getMessage());
             }
         }
         
@@ -243,8 +285,12 @@ public class ExcelOrderImporter {
         trade.setTargetPrice(mainRow.target);
         trade.setAlertThreshold(mainRow.alert);
         
-        // Add all legs
+        // Get QTY from main leg
+        int mainQty = mainRow.quantity;
+        
+        // Add all legs (child legs inherit QTY from main)
         for (ExcelRow row : rows) {
+            int legQty = "MAIN".equalsIgnoreCase(row.role) ? row.quantity : mainQty;
             TradeOrder.OrderLeg leg = new TradeOrder.OrderLeg(
                 row.symbol,
                 row.expiry,
@@ -252,7 +298,8 @@ public class ExcelOrderImporter {
                 row.optionType,
                 row.role,
                 row.strike,
-                row.quantity,
+                row.rate,
+                legQty,
                 row.account,
                 row.rowNumber
             );

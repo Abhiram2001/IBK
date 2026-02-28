@@ -19,27 +19,33 @@ public class TradeOrder {
         public final String optionType;
         public final String role;
         public final double strike;
+        public final int rate;
         public final int quantity;
         public final String account;
         public final int excelRow;
         
         public OrderLeg(String symbol, String expiry, String action, String optionType, String role, 
-                       double strike, int quantity, String account, int excelRow) {
+                       double strike, int rate, int quantity, String account, int excelRow) {
             this.symbol = symbol;
             this.expiry = expiry;
             this.action = action;
             this.optionType = optionType;
             this.role = role;
             this.strike = strike;
+            this.rate = rate;
             this.quantity = quantity;
             this.account = account;
             this.excelRow = excelRow;
         }
         
+        public int getTotalQuantity() {
+            return rate * quantity;
+        }
+        
         @Override
         public String toString() {
-            return String.format("%s %d %s %s %.2f (%s)", 
-                action, quantity, symbol, expiry, strike, role);
+            return String.format("%s %d×%d=%d %s %s %.2f (%s)", 
+                action, rate, quantity, getTotalQuantity(), symbol, expiry, strike, role);
         }
     }
     
@@ -113,7 +119,7 @@ public class TradeOrder {
     }
     
     public int getTotalQuantity() {
-        return legs.stream().mapToInt(leg -> leg.quantity).sum();
+        return legs.isEmpty() ? 0 : legs.get(0).quantity;
     }
     
     public String getDisplayExpiry() {
