@@ -86,6 +86,25 @@ public class PriceMonitor {
         alertListeners.remove(listener);
     }
     
+    public String registerOrder(double targetPrice, double alertThreshold, String action) {
+        String orderId = UUID.randomUUID().toString().substring(0, 8);
+        MonitoredOrder order = new MonitoredOrder(orderId, null, targetPrice, alertThreshold, action);
+        monitoredOrders.put(orderId, order);
+        return orderId;
+    }
+    
+    public void updatePrice(String orderId, double price) {
+        MonitoredOrder order = monitoredOrders.get(orderId);
+        if (order == null || price <= 0) return;
+        order.currentPrice = price;
+        order.lastUpdateTime = System.currentTimeMillis();
+        notifyPriceUpdate(order, price);
+        if (order.shouldAlert()) {
+            order.alertTriggered = true;
+            notifyAlert(order, price, order.getDistanceToTarget());
+        }
+    }
+    
     public String startMonitoring(Contract contract, double targetPrice, 
                                   double alertThreshold, String action) {
         String orderId = UUID.randomUUID().toString().substring(0, 8);

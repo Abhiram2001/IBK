@@ -107,15 +107,39 @@ public class TradeOrder {
         if (legs.isEmpty()) return "";
         
         if (isComboOrder()) {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < legs.size(); i++) {
-                if (i > 0) sb.append("/");
-                sb.append(legs.get(i).action);
-            }
-            return sb.toString();
+            return isCreditTrade() ? "SELL" : "BUY";
         } else {
             return legs.get(0).action;
         }
+    }
+    
+    public String getDetailedAction() {
+        if (legs.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < legs.size(); i++) {
+            if (i > 0) sb.append(" / ");
+            OrderLeg leg = legs.get(i);
+            String type = "C".equals(leg.optionType) ? "CALL" : "PUT";
+            sb.append(type).append(" ").append(leg.action);
+        }
+        return sb.toString();
+    }
+    
+    public boolean isCreditTrade() {
+        if (legs.isEmpty()) return false;
+        if (!isComboOrder()) {
+            return "SELL".equalsIgnoreCase(legs.get(0).action);
+        }
+        // Credit = net premium received (more sells than buys by value)
+        double netCashFlow = 0;
+        for (OrderLeg leg : legs) {
+            if ("SELL".equalsIgnoreCase(leg.action)) {
+                netCashFlow += leg.rate; // premium received
+            } else {
+                netCashFlow -= leg.rate; // premium paid
+            }
+        }
+        return netCashFlow > 0;
     }
     
     public int getTotalQuantity() {

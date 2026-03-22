@@ -234,8 +234,8 @@ public class ExcelOrderImporter {
         
         // Only validate target/alert for explicitly marked MAIN role
         if ("MAIN".equalsIgnoreCase(row.role) && !row.role.isEmpty()) {
-            if (row.target <= 0) {
-                throw new Exception("Target price must be positive for Main role");
+            if (row.target == 0) {
+                throw new Exception("Target price must be non-zero for Main role");
             }
             // Alert: positive = trigger above, negative = trigger below, 0 = no alert
         }

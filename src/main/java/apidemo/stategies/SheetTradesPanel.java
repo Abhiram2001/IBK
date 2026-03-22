@@ -24,7 +24,7 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
     private final Map<String, ApiController.ITopMktDataHandler> marketDataHandlers = new HashMap<>();
     private final Map<String, Map<String, Double>> comboLegPrices = new HashMap<>();
     
-    private static final int PAGE_SIZE = 15;
+    private static final int PAGE_SIZE = 10;
     private int currentPage = 0;
     private JLabel pageLabel;
     
@@ -71,7 +71,15 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
             }
         }
         if (added > 0) {
-            goToPage(totalPages() - 1);
+            // Sort by Trade ID to preserve original order after reimport
+            tradeOrders.sort((a, b) -> {
+                try {
+                    return Integer.compare(Integer.parseInt(a.getTradeId()), Integer.parseInt(b.getTradeId()));
+                } catch (NumberFormatException e) {
+                    return a.getTradeId().compareTo(b.getTradeId());
+                }
+            });
+            goToPage(0);
             statusLabel.setText(String.format("Added %d new trades to %s (total: %d)", added, sheetName, tradeOrders.size()));
             statusLabel.setForeground(new Color(0, 128, 0));
             if (!marketPriceUpdateTimer.isRunning()) {
@@ -123,6 +131,18 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
                 if (column == COL_TARGET || column == COL_ALERT) return new NumberEditor();
                 return super.getCellEditor(row, column);
             }
+            @Override
+            public String getToolTipText(java.awt.event.MouseEvent e) {
+                int row = rowAtPoint(e.getPoint());
+                int col = columnAtPoint(e.getPoint());
+                if (col == COL_ACTION && row >= 0) {
+                    int tradeIdx = toTradeIndex(row);
+                    if (tradeIdx < tradeOrders.size()) {
+                        return tradeOrders.get(tradeIdx).getDetailedAction();
+                    }
+                }
+                return super.getToolTipText(e);
+            }
         };
         
         configTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
@@ -139,7 +159,7 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         }
         
         JScrollPane scrollPane = new JScrollPane(configTable);
-        scrollPane.setPreferredSize(new Dimension(1100, 300));
+        scrollPane.setPreferredSize(new Dimension(1100, 400));
         scrollPane.getViewport().setBackground(Color.WHITE);
         panel.add(scrollPane, BorderLayout.CENTER);
         
@@ -201,6 +221,9 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         int end = Math.min(start + PAGE_SIZE, tradeOrders.size());
         for (int i = start; i < end; i++) {
             TradeOrder trade = tradeOrders.get(i);
+            // Sign target/alert: negative for credit, positive for debit
+            double signedTarget = trade.isCreditTrade() ? -Math.abs(trade.getTargetPrice()) : Math.abs(trade.getTargetPrice());
+            double signedAlert = trade.isCreditTrade() ? -Math.abs(trade.getAlertThreshold()) : Math.abs(trade.getAlertThreshold());
             tableModel.addRow(new Object[]{
                 Boolean.FALSE,
                 trade.getTradeId(),
@@ -211,8 +234,8 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
                 trade.isComboOrder() ? "Combo" : String.format("%.2f", trade.getMainLeg().strike),
                 trade.isComboOrder() ? "Combo" : trade.getMainLeg().rate,
                 trade.getTotalQuantity(),
-                trade.getTargetPrice(),
-                trade.getAlertThreshold(),
+                signedTarget,
+                signedAlert,
                 trade.getCurrentPrice() > 0 ? trade.getCurrentPrice() : 0.0,
                 getStatusText(trade)
             });
@@ -232,6 +255,9 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         cancelAllMarketData();
         refreshTable();
         updateMarketPrices();
+        if (!tradeOrders.isEmpty() && !marketPriceUpdateTimer.isRunning()) {
+            marketPriceUpdateTimer.start();
+        }
     }
     
     private void updateStatusInTable(int tradeIndex, String status) {
@@ -281,11 +307,12 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         Object alertObj = tableModel.getValueAt(row, COL_ALERT);
         if (targetObj != null) {
             double v = parsePrice(targetObj);
-            if (v > 0) trade.setTargetPrice(v);
+            // Store absolute value internally; sign is only for display
+            if (v != 0) trade.setTargetPrice(Math.abs(v));
         }
         if (alertObj != null) {
             double v = parsePrice(alertObj);
-            trade.setAlertThreshold(v);
+            trade.setAlertThreshold(Math.abs(v));
         }
     }
     
@@ -294,7 +321,7 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         if (value instanceof Integer) return (Integer) value;
         if (value instanceof Number) return ((Number) value).doubleValue();
         if (value instanceof String) {
-            try { return Double.parseDouble((String) value); } catch (NumberFormatException e) { return 0.0; }
+            try { return Double.parseDouble(((String) value).replace("+", "")); } catch (NumberFormatException e) { return 0.0; }
         }
         return 0.0;
     }
@@ -359,8 +386,7 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         statusLabel.setText(String.format("Stopped monitoring %d trades", stopped));
         statusLabel.setForeground(new Color(244, 67, 54));
         
-        boolean anyMonitoring = tradeOrders.stream().anyMatch(t -> t.getStatus() == TradeOrder.OrderStatus.MONITORING);
-        if (!anyMonitoring && marketPriceUpdateTimer.isRunning()) marketPriceUpdateTimer.stop();
+        // Keep timer running for market price display even when not monitoring
     }
     
     private void placeOrderSelected() {
@@ -430,21 +456,28 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         }
         
         updateTradeFromTable(rowIndex, trade);
-        Contract contract = createContractFromLeg(mainLeg);
-        
-        String monitoringId = trade.getTradeId() + "_" + System.currentTimeMillis();
-        trade.setMonitoringId(monitoringId);
         trade.setStatus(TradeOrder.OrderStatus.MONITORING);
         updateStatusInTable(rowIndex, getStatusText(trade));
         
-        m_parent.controller().reqContractDetails(contract, contractDetailsList -> {
-            if (!contractDetailsList.isEmpty()) {
-                Contract validated = contractDetailsList.get(0).contract();
-                String actualId = priceMonitor.startMonitoring(
-                    validated, trade.getTargetPrice(), trade.getAlertThreshold(), mainLeg.action);
-                trade.setMonitoringId(actualId);
-            }
-        });
+        if (trade.isComboOrder()) {
+            // Combo: register without market data subscription; net combo price fed via syncMonitorPrice
+            String actualId = priceMonitor.registerOrder(
+                trade.getTargetPrice(), trade.getAlertThreshold(), mainLeg.action);
+            trade.setMonitoringId(actualId);
+        } else {
+            // Single leg: subscribe to main leg's market data for alert
+            Contract contract = createContractFromLeg(mainLeg);
+            String monitoringId = trade.getTradeId() + "_" + System.currentTimeMillis();
+            trade.setMonitoringId(monitoringId);
+            m_parent.controller().reqContractDetails(contract, contractDetailsList -> {
+                if (!contractDetailsList.isEmpty()) {
+                    Contract validated = contractDetailsList.get(0).contract();
+                    String actualId = priceMonitor.startMonitoring(
+                        validated, trade.getTargetPrice(), trade.getAlertThreshold(), mainLeg.action);
+                    trade.setMonitoringId(actualId);
+                }
+            });
+        }
     }
     
     private void updateMarketPrices() {
@@ -539,12 +572,13 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
                             if (legPrices != null) {
                                 legPrices.put(legKey, display);
                                 double netPrice = calculateNetComboPrice(trade, legPrices);
-                                if (netPrice > 0) {
-                                    trade.setCurrentPrice(netPrice);
-                                    syncMonitorPrice(trade, netPrice);
+                                if (netPrice != 0) {
+                                    double absNet = Math.abs(netPrice);
+                                    trade.setCurrentPrice(absNet);
+                                    syncMonitorPrice(trade, absNet);
                                     int tableRow = toTableRow(tradeIndex);
                                     if (tableRow >= 0) {
-                                        tableModel.setValueAt(netPrice, tableRow, COL_MARKET);
+                                        tableModel.setValueAt(absNet, tableRow, COL_MARKET);
                                     }
                                 }
                             }
@@ -583,10 +617,8 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
     
     private void syncMonitorPrice(TradeOrder trade, double price) {
         if (trade.getStatus() == TradeOrder.OrderStatus.MONITORING && trade.getMonitoringId() != null) {
-            PriceMonitor.MonitoredOrder order = priceMonitor.getOrder(trade.getMonitoringId());
-            if (order != null) {
-                order.currentPrice = price;
-            }
+            // For combo orders, updatePrice also checks alert condition
+            priceMonitor.updatePrice(trade.getMonitoringId(), price);
         }
     }
     
@@ -662,22 +694,20 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         bag.exchange("SMART");
         bag.currency("USD");
         
-        String orderAction = trade.getMainLeg() != null ? trade.getMainLeg().action : "BUY";
-        
         List<ComboLeg> comboLegs = new ArrayList<>();
         for (int i = 0; i < trade.getLegs().size(); i++) {
             TradeOrder.OrderLeg leg = trade.getLegs().get(i);
             ComboLeg cl = new ComboLeg();
             cl.conid(validatedContracts.get(i).conid());
             cl.ratio(leg.rate);
-            cl.action("BUY");
+            cl.action(leg.action);
             cl.exchange("SMART");
             comboLegs.add(cl);
         }
         bag.comboLegs(comboLegs);
         
         Order twsOrder = new Order();
-        twsOrder.action(orderAction);
+        twsOrder.action("BUY");
         twsOrder.totalQuantity(Decimal.get(trade.getTotalQuantity()));
         twsOrder.orderType("LMT");
         twsOrder.lmtPrice(trade.getTargetPrice());
@@ -794,7 +824,19 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
                 c.setBackground(new Color(232, 245, 233));
                 setBorder(new LineBorder(new Color(76, 175, 80), 1));
             }
-            if (value instanceof Double) setText(String.format("%.2f", (Double) value));
+            if (value instanceof Double) {
+                double v = (Double) value;
+                if (v < 0) {
+                    setText(String.format("-%.2f", Math.abs(v)));
+                    setForeground(new Color(211, 47, 47));
+                } else if (v > 0) {
+                    setText(String.format("+%.2f", v));
+                    setForeground(new Color(46, 125, 50));
+                } else {
+                    setText("0.00");
+                    setForeground(Color.GRAY);
+                }
+            }
             return c;
         }
     }
