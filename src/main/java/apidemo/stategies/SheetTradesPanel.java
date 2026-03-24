@@ -45,7 +45,7 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         setLayout(new BorderLayout(5, 5));
         setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
         
-        marketPriceUpdateTimer = new javax.swing.Timer(10000, e -> updateMarketPrices());
+        marketPriceUpdateTimer = new javax.swing.Timer(20000, e -> updateMarketPrices());
         
         add(createConfigPanel(), BorderLayout.CENTER);
         
@@ -68,6 +68,15 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
                 tradeOrders.add(trade);
                 tradeIdSet.add(trade.getTradeId());
                 added++;
+                // Debug: log parsed trade details
+                System.out.println("IMPORT Trade " + trade.getTradeId() + ": " + 
+                    trade.getDisplaySymbols() + " | isCombo=" + trade.isComboOrder() +
+                    " | isCredit=" + trade.isCreditTrade() + " | display=" + trade.getDisplayAction() +
+                    " | target=" + trade.getTargetPrice() + " | alert=" + trade.getAlertThreshold());
+                for (TradeOrder.OrderLeg leg : trade.getLegs()) {
+                    System.out.println("  Leg: " + leg.optionType + " " + leg.action + 
+                        " strike=" + leg.strike + " rate=" + leg.rate + " role=" + leg.role);
+                }
             }
         }
         if (added > 0) {
@@ -459,10 +468,16 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         trade.setStatus(TradeOrder.OrderStatus.MONITORING);
         updateStatusInTable(rowIndex, getStatusText(trade));
         
+        // Unified sign: positive = debit (alert when price drops to/below),
+        //               negative = credit (alert when price rises to/above)
+        double signedAlert = trade.isCreditTrade()
+            ? -Math.abs(trade.getAlertThreshold())
+            : Math.abs(trade.getAlertThreshold());
+        
         if (trade.isComboOrder()) {
             // Combo: register without market data subscription; net combo price fed via syncMonitorPrice
             String actualId = priceMonitor.registerOrder(
-                trade.getTargetPrice(), trade.getAlertThreshold(), mainLeg.action);
+                trade.getTargetPrice(), signedAlert, mainLeg.action);
             trade.setMonitoringId(actualId);
         } else {
             // Single leg: subscribe to main leg's market data for alert
@@ -473,7 +488,7 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
                 if (!contractDetailsList.isEmpty()) {
                     Contract validated = contractDetailsList.get(0).contract();
                     String actualId = priceMonitor.startMonitoring(
-                        validated, trade.getTargetPrice(), trade.getAlertThreshold(), mainLeg.action);
+                        validated, trade.getTargetPrice(), signedAlert, mainLeg.action);
                     trade.setMonitoringId(actualId);
                 }
             });
@@ -504,9 +519,8 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         if (mainLeg == null) return;
         
         String key = trade.getTradeId();
-        if (marketDataHandlers.containsKey(key)) {
-            m_parent.controller().cancelTopMktData(marketDataHandlers.get(key));
-        }
+        // Already subscribed — skip to avoid redundant re-subscriptions that cause flicker
+        if (marketDataHandlers.containsKey(key)) return;
         
         Contract contract = createContractFromLeg(mainLeg);
         
@@ -547,6 +561,10 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
     
     private void requestComboMarketPrice(TradeOrder trade, int tradeIndex) {
         String tradeId = trade.getTradeId();
+        // Only subscribe once; subsequent timer ticks reuse existing handlers
+        String firstLegKey = tradeId + "_" + trade.getLegs().get(0).strike + "_" + trade.getLegs().get(0).optionType;
+        if (marketDataHandlers.containsKey(firstLegKey)) return;
+        
         comboLegPrices.put(tradeId, new HashMap<>());
         
         for (TradeOrder.OrderLeg leg : trade.getLegs()) {
@@ -573,12 +591,13 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
                                 legPrices.put(legKey, display);
                                 double netPrice = calculateNetComboPrice(trade, legPrices);
                                 if (netPrice != 0) {
-                                    double absNet = Math.abs(netPrice);
-                                    trade.setCurrentPrice(absNet);
-                                    syncMonitorPrice(trade, absNet);
+                                        trade.setCurrentPrice(Math.abs(netPrice));
+                                    syncMonitorPrice(trade, Math.abs(netPrice));
                                     int tableRow = toTableRow(tradeIndex);
                                     if (tableRow >= 0) {
-                                        tableModel.setValueAt(absNet, tableRow, COL_MARKET);
+                                        // Display signed net: positive=debit, negative=credit
+                                        double displayNet = trade.isCreditTrade() ? -Math.abs(netPrice) : Math.abs(netPrice);
+                                        tableModel.setValueAt(displayNet, tableRow, COL_MARKET);
                                     }
                                 }
                             }
@@ -706,14 +725,34 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
         }
         bag.comboLegs(comboLegs);
         
+        // For combo/BAG orders:
+        //  - Credit trade (net sell): action=SELL, lmtPrice = positive target
+        //  - Debit trade (net buy):  action=BUY,  lmtPrice = positive target
+        boolean isCredit = trade.isCreditTrade();
+        
         Order twsOrder = new Order();
-        twsOrder.action("BUY");
+        twsOrder.action(isCredit ? "SELL" : "BUY");
         twsOrder.totalQuantity(Decimal.get(trade.getTotalQuantity()));
         twsOrder.orderType("LMT");
         twsOrder.lmtPrice(trade.getTargetPrice());
         twsOrder.tif("GTC");
         twsOrder.outsideRth(false);
         if (!trade.getAccount().trim().isEmpty()) twsOrder.account(trade.getAccount());
+        
+        // Allow IB to accept combos that may appear as guaranteed-to-lose
+        List<TagValue> smartParams = new ArrayList<>();
+        smartParams.add(new TagValue("NonGuaranteed", "1"));
+        twsOrder.smartComboRoutingParams(smartParams);
+        
+        System.out.println("COMBO ORDER: Trade " + trade.getTradeId() + 
+            " isCredit=" + isCredit + " action=" + twsOrder.action() + 
+            " lmtPrice=" + twsOrder.lmtPrice() + " qty=" + twsOrder.totalQuantity() +
+            " legs=" + comboLegs.size());
+        for (int i = 0; i < trade.getLegs().size(); i++) {
+            TradeOrder.OrderLeg leg = trade.getLegs().get(i);
+            System.out.println("  Leg " + (i+1) + ": " + leg.optionType + " " + leg.action + 
+                " strike=" + leg.strike + " rate=" + leg.rate + " conid=" + validatedContracts.get(i).conid());
+        }
         
         placeOrder(trade, bag, twsOrder, rowIndex);
     }
@@ -847,9 +886,15 @@ public class SheetTradesPanel extends JPanel implements PriceMonitor.PriceAlertL
             Component c = super.getTableCellRendererComponent(table, value, sel, focus, row, col);
             setHorizontalAlignment(SwingConstants.CENTER);
             if (!sel) c.setBackground(new Color(227, 242, 253));
-            if (value instanceof Double && ((Double) value) > 0) {
-                setText(String.format("%.2f", (Double) value));
-                setForeground(new Color(33, 150, 243));
+            if (value instanceof Double && ((Double) value) != 0.0) {
+                double v = (Double) value;
+                if (v < 0) {
+                    setText(String.format("-%.2f", Math.abs(v)));
+                    setForeground(new Color(211, 47, 47)); // red for credit
+                } else {
+                    setText(String.format("+%.2f", v));
+                    setForeground(new Color(33, 150, 243)); // blue for debit
+                }
                 setFont(getFont().deriveFont(Font.BOLD));
             } else {
                 setText("--");

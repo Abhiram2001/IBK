@@ -53,9 +53,11 @@ public class PriceMonitor {
         public boolean shouldAlert() {
             if (alertTriggered || currentPrice == 0.0 || alertThreshold == 0.0) return false;
             if (alertThreshold > 0) {
-                return currentPrice >= alertThreshold;  // trigger at/above
+                // Positive = debit: alert when price drops to/below threshold
+                return currentPrice <= alertThreshold;
             } else {
-                return currentPrice <= Math.abs(alertThreshold);  // trigger at/below
+                // Negative = credit: alert when price rises to/above |threshold|
+                return currentPrice >= Math.abs(alertThreshold);
             }
         }
         
